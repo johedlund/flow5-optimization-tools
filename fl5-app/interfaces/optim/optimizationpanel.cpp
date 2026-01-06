@@ -96,16 +96,13 @@ void OptimizationPanel::setupUI()
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0,0,0,0);
 
-    auto *splitter = new QSplitter(Qt::Horizontal, this);
-    mainLayout->addWidget(splitter);
+    auto *mainSplitter = new QSplitter(Qt::Horizontal, this);
+    mainLayout->addWidget(mainSplitter);
 
-    // --- Left Pane (Visualization) ---
-    auto *leftWidget = new QTabWidget(splitter);
+    // --- Left Pane (Visualization: Vertical Split) ---
+    auto *visSplitter = new QSplitter(Qt::Vertical, mainSplitter);
     
-    // Tab 1: Progress Graph
-    auto *progressTab = new QWidget;
-    auto *progressLayout = new QVBoxLayout(progressTab);
-    
+    // 1. Progress Graph
     m_pGraph = new Graph;
     m_pCurveModel = new CurveModel;
     m_pGraph->setCurveModel(m_pCurveModel);
@@ -125,23 +122,27 @@ void OptimizationPanel::setupUI()
 
     m_pGraphWt = new GraphWt(this);
     m_pGraphWt->setGraph(m_pGraph);
-    progressLayout->addWidget(m_pGraphWt);
-    leftWidget->addTab(progressTab, "Fitness Plot");
+    visSplitter->addWidget(m_pGraphWt);
 
-    // Tab 2: Section Preview
+    // 2. Section Preview
     m_pSectionView = new FoilWt(this);
     m_pSectionView->showLegend(false);
-    leftWidget->addTab(m_pSectionView, "Section Preview");
+    visSplitter->addWidget(m_pSectionView);
 
-    // Tab 3: Log
+    // 3. Log
     m_LogOutput = new QTextEdit(this);
     m_LogOutput->setReadOnly(true);
-    leftWidget->addTab(m_LogOutput, "Log");
+    visSplitter->addWidget(m_LogOutput);
 
-    splitter->addWidget(leftWidget);
+    // Set ratios (Graph:Preview:Log -> 2:2:1)
+    visSplitter->setStretchFactor(0, 2);
+    visSplitter->setStretchFactor(1, 2);
+    visSplitter->setStretchFactor(2, 1);
+
+    mainSplitter->addWidget(visSplitter);
 
     // --- Right Pane (Inspector) ---
-    auto *rightScroll = new QScrollArea(splitter);
+    auto *rightScroll = new QScrollArea(mainSplitter);
     rightScroll->setWidgetResizable(true);
     rightScroll->setFrameShape(QFrame::NoFrame);
     
@@ -271,11 +272,11 @@ void OptimizationPanel::setupUI()
     inspectorLayout->addWidget(actionGroup);
 
     rightScroll->setWidget(inspectorWidget);
-    splitter->addWidget(rightScroll);
+    mainSplitter->addWidget(rightScroll);
 
     // Initial sizes
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 2);
+    mainSplitter->setStretchFactor(0, 3);
+    mainSplitter->setStretchFactor(1, 2);
 }
 
 void OptimizationPanel::log(const QString &msg)
