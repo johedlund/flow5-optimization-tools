@@ -400,7 +400,7 @@ void XDirect::setControls()
     m_pActions->m_pExportCurFoilSVG->setEnabled(s_pCurFoil);
 
     m_pActions->m_pDefinePolarAct->setEnabled(s_pCurFoil);
-    m_pActions->m_pOptimFoilAct->setEnabled(s_pCurFoil && s_pCurPolar);
+    m_pActions->m_pOptimFoilAct->setEnabled(s_pCurFoil);
     m_pActions->m_pDeleteFoilOpps->setEnabled(s_pCurFoil);
     m_pActions->m_pDeleteFoilPolars->setEnabled(s_pCurFoil);
 
@@ -1350,10 +1350,10 @@ void XDirect::onDefineAnalysis()
 
 void XDirect::onOptimFoil()
 {
-    if(!s_pCurFoil || !s_pCurPolar)
+    if(!s_pCurFoil)
     {
         QMessageBox::warning(s_pMainFrame, "Foil optimization",
-                             "Select an active foil and polar before optimizing.");
+                             "Select an active foil before optimizing.");
         return;
     }
 
