@@ -3,4 +3,8 @@ flow5 is a potential flow solver with built-in pre- and post- processing functio
 
 It is version 7 of the legacy project xflr5.
 
+# optiflow
+Optiflow are integrated addons to Flow5 where sections can be automatically iterated towards set criterias. Both in 2d and in 3d. 
+This is the first version.
+
 
