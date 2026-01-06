@@ -289,6 +289,7 @@ void OptimFoilDlg::onRun()
 
     m_pFitnessCurve->clear();
     m_pGraph->resetLimits();
+    m_pGraph->invalidate();
     m_pGraphWt->update();
 
     m_RunActive = true;
@@ -353,6 +354,7 @@ void OptimFoilDlg::customEvent(QEvent *event)
             if (pEvent->iter() % 5 == 0) // Refresh every 5 iters to save UI cost
             {
                 m_pGraph->resetLimits();
+                m_pGraph->invalidate();
                 m_pGraphWt->update();
             }
         }
@@ -361,6 +363,9 @@ void OptimFoilDlg::customEvent(QEvent *event)
     {
         m_StatusLabel->setText("Optimization finished.");
         m_ProgressBar->setValue(PSOTask::s_MaxIter);
+        m_pGraph->resetLimits();
+        m_pGraph->invalidate();
+        m_pGraphWt->update();
         
         // Show best result if available
         OptimEvent *pEvent = static_cast<OptimEvent*>(event);
