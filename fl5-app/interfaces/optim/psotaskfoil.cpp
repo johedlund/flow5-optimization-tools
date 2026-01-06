@@ -317,7 +317,7 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
 
     pParticle->setConverged(false);
 
-    if(!m_pFoil || !m_pPolar)
+    if(!m_pFoil)
         return;
 
     if(pParticle->dimension() != nVariables())
@@ -404,7 +404,14 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     }
 
     Polar workPolar;
-    workPolar.copySpecification(*m_pPolar);
+    if(m_pPolar)
+        workPolar.copySpecification(*m_pPolar);
+    
+    // Override with task settings
+    workPolar.setReynolds(m_Reynolds);
+    workPolar.setMach(m_Mach);
+    workPolar.setNCrit(m_NCrit);
+
     workPolar.reset();
     workPolar.setFoilName(workFoil.name());
 

@@ -83,6 +83,11 @@ class PSOTaskFoil : public PSOTask
         void setObjectiveType(ObjectiveType type) {m_ObjectiveType = type;}
         void setTargetAlpha(double alpha);
         void setTargetCl(double cl);
+        
+        void setReynolds(double re) {m_Reynolds = re;}
+        void setMach(double ma) {m_Mach = ma;}
+        void setNCrit(double nc) {m_NCrit = nc;}
+
         void clearTargetOverride() {m_TargetMode = TargetMode::Polar;}
         TargetMode targetMode() const {return m_TargetMode;}
         int variableBaseIndex(int varIndex) const;
@@ -101,6 +106,9 @@ class PSOTaskFoil : public PSOTask
         ObjectiveType m_ObjectiveType{ObjectiveType::MaximizeLD};
         PresetType m_Preset{PresetType::V1_Y_Only};
         double m_TargetValue{0.0};
+        double m_Reynolds{1.0e6};
+        double m_Mach{0.0};
+        double m_NCrit{9.0};
         int m_OptimizationPoints{0};
         double m_BoundsScale{1.0};
         std::vector<Node2d> m_OptimBaseNodes;

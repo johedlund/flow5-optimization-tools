@@ -99,6 +99,11 @@ private:
     QSpinBox *m_sbOptimPoints;
     QDoubleSpinBox *m_sbBoundsScale;
 
+    // Run Parameters
+    QDoubleSpinBox *m_sbReynolds;
+    QDoubleSpinBox *m_sbMach;
+    QDoubleSpinBox *m_sbNCrit;
+
     // Objectives
     QComboBox *m_ObjectiveCombo;
     QComboBox *m_TargetModeCombo;

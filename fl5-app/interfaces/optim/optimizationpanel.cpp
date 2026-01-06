@@ -87,6 +87,12 @@ void OptimizationPanel::initPanel(Foil *pFoil, Polar *pPolar)
         double t = m_pFoil->maxThickness();
         m_sbMinModulus->setValue(0.12 * t * t);
         
+        if (m_pPolar) {
+            m_sbReynolds->setValue(m_pPolar->Reynolds() / 1.0e6); // Display in Millions
+            m_sbMach->setValue(m_pPolar->Mach());
+            m_sbNCrit->setValue(m_pPolar->NCrit());
+        }
+        
         rebuildSectionPreview();
     }
 }
@@ -181,6 +187,32 @@ void OptimizationPanel::setupUI()
     m_sbBoundsScale->setSuffix("x");
     geoLayout->addRow("Bounds Scale:", m_sbBoundsScale);
     inspectorLayout->addWidget(geoGroup);
+
+    // Run Parameters Group (New)
+    auto *runGroup = new QGroupBox("Run Parameters", inspectorWidget);
+    auto *runLayout = new QFormLayout(runGroup);
+    
+    m_sbReynolds = new QDoubleSpinBox(this);
+    m_sbReynolds->setRange(0.01, 100.0);
+    m_sbReynolds->setValue(1.0);
+    m_sbReynolds->setSuffix(" M");
+    m_sbReynolds->setDecimals(2);
+    m_sbReynolds->setSingleStep(0.1);
+    runLayout->addRow("Reynolds:", m_sbReynolds);
+
+    m_sbMach = new QDoubleSpinBox(this);
+    m_sbMach->setRange(0.0, 1.0);
+    m_sbMach->setValue(0.0);
+    m_sbMach->setSingleStep(0.05);
+    runLayout->addRow("Mach:", m_sbMach);
+
+    m_sbNCrit = new QDoubleSpinBox(this);
+    m_sbNCrit->setRange(1.0, 20.0);
+    m_sbNCrit->setValue(9.0);
+    m_sbNCrit->setSingleStep(0.5);
+    runLayout->addRow("NCrit:", m_sbNCrit);
+    
+    inspectorLayout->addWidget(runGroup);
 
     // Objectives Group
     auto *objGroup = new QGroupBox("Objectives", inspectorWidget);
@@ -286,8 +318,8 @@ void OptimizationPanel::log(const QString &msg)
 
 void OptimizationPanel::onRun()
 {
-    if(!m_pFoil || !m_pPolar) {
-        QMessageBox::warning(this, "Error", "No foil or polar selected.");
+    if(!m_pFoil) {
+        QMessageBox::warning(this, "Error", "No foil selected.");
         return;
     }
 
@@ -303,6 +335,11 @@ void OptimizationPanel::onRun()
 
     m_pTask->setFoil(m_pFoil);
     m_pTask->setPolar(m_pPolar);
+
+    // Set Run Parameters
+    m_pTask->setReynolds(m_sbReynolds->value() * 1.0e6);
+    m_pTask->setMach(m_sbMach->value());
+    m_pTask->setNCrit(m_sbNCrit->value());
 
     PSOTaskFoil::PresetType preset = static_cast<PSOTaskFoil::PresetType>(m_PresetCombo->currentData().toInt());
     m_pTask->setPreset(preset);
