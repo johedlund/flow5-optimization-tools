@@ -351,12 +351,9 @@ void OptimFoilDlg::customEvent(QEvent *event)
             // Update graph
             double bestFitness = pEvent->particle().fitness(0); // Assuming objective 0 is primary
             m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
-            if (pEvent->iter() % 5 == 0) // Refresh every 5 iters to save UI cost
-            {
-                m_pGraph->resetLimits();
-                m_pGraph->invalidate();
-                m_pGraphWt->update();
-            }
+            m_pGraph->resetLimits();
+            m_pGraph->invalidate();
+            m_pGraphWt->update();
         }
     }
     else if(event->type() == OPTIM_END_EVENT)
