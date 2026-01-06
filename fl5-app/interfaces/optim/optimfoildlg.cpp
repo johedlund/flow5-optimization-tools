@@ -35,6 +35,7 @@
 
 #include <api/foil.h> // Required for m_pFoil->name()
 #include <api/polar.h>
+#include <interfaces/editors/foiledit/foilwt.h>
 #include <interfaces/optim/psotaskfoil.h>
 #include <interfaces/optim/psotask.h> // for OptimEvent and constants
 #include <interfaces/graphs/containers/graphwt.h>
@@ -46,6 +47,8 @@
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QFormLayout>
+
+#include <algorithm>
 
 OptimFoilDlg::OptimFoilDlg(QWidget *pParent)
     : QDialog(pParent)
@@ -86,6 +89,14 @@ OptimFoilDlg::OptimFoilDlg(QWidget *pParent)
     m_pGraphWt->setGraph(m_pGraph);
     m_pGraphWt->setMinimumHeight(300);
     mainLayout->addWidget(m_pGraphWt);
+
+    auto *previewLabel = new QLabel("Section preview (best per iteration)", this);
+    mainLayout->addWidget(previewLabel);
+
+    m_pSectionView = new FoilWt(this);
+    m_pSectionView->showLegend(false);
+    m_pSectionView->setMinimumHeight(220);
+    mainLayout->addWidget(m_pSectionView);
 
     auto *presetLayout = new QHBoxLayout();
     presetLayout->addWidget(new QLabel("Variables Preset:", this));
@@ -174,6 +185,7 @@ OptimFoilDlg::~OptimFoilDlg()
 {
     if(m_pGraph) delete m_pGraph;
     if(m_pCurveModel) delete m_pCurveModel;
+    clearPreviewFoils();
 }
 
 void OptimFoilDlg::initDialog(Foil *pFoil, Polar *pPolar)
@@ -194,6 +206,8 @@ void OptimFoilDlg::initDialog(Foil *pFoil, Polar *pPolar)
         double t = m_pFoil->maxThickness();
         m_sbMinModulus->setValue(0.12 * t * t);
     }
+
+    rebuildSectionPreview();
 }
 
 void OptimFoilDlg::onRun()
@@ -282,6 +296,8 @@ void OptimFoilDlg::onRun()
 
     m_pTask->setConstraints(constraints);
 
+    rebuildSectionPreview();
+
     updateUI(true);
     m_StatusLabel->setText("Building swarm...");
     m_ProgressBar->setRange(0, 0);
@@ -354,6 +370,8 @@ void OptimFoilDlg::customEvent(QEvent *event)
             m_pGraph->resetLimits();
             m_pGraph->invalidate();
             m_pGraphWt->update();
+
+            updateCandidatePreview(pEvent->particle());
         }
     }
     else if(event->type() == OPTIM_END_EVENT)
@@ -375,6 +393,73 @@ void OptimFoilDlg::customEvent(QEvent *event)
         }
         updateUI(false);
     }
+}
+
+void OptimFoilDlg::clearPreviewFoils()
+{
+    if(m_pSectionView)
+    {
+        m_pSectionView->clearFoils();
+        m_pSectionView->setBufferFoil(nullptr);
+    }
+
+    delete m_pGhostFoil;
+    m_pGhostFoil = nullptr;
+    delete m_pPreviewFoil;
+    m_pPreviewFoil = nullptr;
+}
+
+void OptimFoilDlg::rebuildSectionPreview()
+{
+    clearPreviewFoils();
+
+    if(!m_pFoil || !m_pSectionView)
+        return;
+
+    m_pGhostFoil = new Foil(m_pFoil);
+    m_pGhostFoil->setName(m_pFoil->name() + "_ghost");
+    m_pGhostFoil->setLineStipple(Line::DASH);
+    m_pGhostFoil->setLineWidth(std::max(1, m_pFoil->lineWidth()));
+    m_pGhostFoil->setLineColor(fl5Color(160, 160, 160));
+    m_pGhostFoil->setFilled(false);
+    m_pGhostFoil->setVisible(true);
+
+    m_pPreviewFoil = new Foil(m_pFoil);
+    m_pPreviewFoil->setName(m_pFoil->name() + "_candidate");
+    m_pPreviewFoil->setLineStipple(Line::SOLID);
+    m_pPreviewFoil->setLineWidth(std::max(2, m_pFoil->lineWidth()));
+    m_pPreviewFoil->setLineColor(m_pFoil->lineColor());
+    m_pPreviewFoil->setFilled(false);
+    m_pPreviewFoil->setVisible(true);
+
+    m_pSectionView->addFoil(m_pGhostFoil);
+    m_pSectionView->setBufferFoil(m_pPreviewFoil);
+    m_pSectionView->update();
+}
+
+void OptimFoilDlg::updateCandidatePreview(const Particle &particle)
+{
+    if(!m_pTask || !m_pSectionView)
+        return;
+
+    Foil *pNewFoil = m_pTask->createOptimizedFoil(particle);
+    if(!pNewFoil)
+        return;
+
+    pNewFoil->setLineStipple(Line::SOLID);
+    if(m_pFoil)
+    {
+        pNewFoil->setLineWidth(std::max(2, m_pFoil->lineWidth()));
+        pNewFoil->setLineColor(m_pFoil->lineColor());
+    }
+    pNewFoil->setFilled(false);
+    pNewFoil->setVisible(true);
+
+    delete m_pPreviewFoil;
+    m_pPreviewFoil = pNewFoil;
+
+    m_pSectionView->setBufferFoil(m_pPreviewFoil);
+    m_pSectionView->update();
 }
 
 void OptimFoilDlg::updateUI(bool isRunning)

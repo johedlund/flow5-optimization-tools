@@ -44,6 +44,7 @@ class CurveModel;
 class QDoubleSpinBox;
 class QSpinBox;
 class QCheckBox;
+class FoilWt;
 
 class OptimFoilDlg : public QDialog
 {
@@ -68,6 +69,9 @@ public:
 
     private:
         void updateUI(bool isRunning);
+        void rebuildSectionPreview();
+        void updateCandidatePreview(const Particle &particle);
+        void clearPreviewFoils();
 
         Foil *m_pFoil{nullptr};
         Polar *m_pPolar{nullptr};
@@ -81,6 +85,9 @@ public:
     Graph *m_pGraph;
     CurveModel *m_pCurveModel;
     Curve *m_pFitnessCurve;
+    FoilWt *m_pSectionView{nullptr};
+    Foil *m_pGhostFoil{nullptr};
+    Foil *m_pPreviewFoil{nullptr};
 
     QLabel *m_StatusLabel;
     QProgressBar *m_ProgressBar;
