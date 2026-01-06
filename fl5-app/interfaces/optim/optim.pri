@@ -1,5 +1,6 @@
 
 HEADERS += \
+    $$PWD/optimizationpanel.h \
     $$PWD/optimfoildlg.h \
     $$PWD/optimplanedlg.h \
     $$PWD/particle.h \
@@ -8,6 +9,7 @@ HEADERS += \
     $$PWD/psotaskplane.h \
 
 SOURCES += \
+    $$PWD/optimizationpanel.cpp \
     $$PWD/optimfoildlg.cpp \
     $$PWD/optimplanedlg.cpp \
     $$PWD/particle.cpp \

@@ -1,0 +1,519 @@
+/****************************************************************************
+
+    flow5 application
+    Copyright © 2026 André Deperrois
+
+    This file is part of flow5.
+
+    flow5 is free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License,
+    or (at your option) any later version.
+
+    flow5 is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty
+    of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    See the GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with flow5.
+    If not, see <https://www.gnu.org/licenses/>.
+
+
+*****************************************************************************/
+
+#include "optimizationpanel.h"
+
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QFormLayout>
+#include <QGridLayout>
+#include <QGroupBox>
+#include <QScrollArea>
+#include <QSplitter>
+#include <QTabWidget>
+#include <QTextEdit>
+#include <QLabel>
+#include <QPushButton>
+#include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QSpinBox>
+#include <QCheckBox>
+#include <QProgressBar>
+#include <QMessageBox>
+#include <QtConcurrent/QtConcurrent>
+#include <QCoreApplication>
+
+#include <api/foil.h>
+#include <api/polar.h>
+#include <interfaces/optim/psotaskfoil.h>
+#include <interfaces/optim/psotask.h>
+#include <interfaces/graphs/containers/graphwt.h>
+#include <interfaces/graphs/graph/graph.h>
+#include <interfaces/graphs/graph/curve.h>
+#include <interfaces/graphs/graph/curvemodel.h>
+#include <interfaces/editors/foiledit/foilwt.h>
+
+OptimizationPanel::OptimizationPanel(QWidget *pParent)
+    : QWidget(pParent)
+{
+    setupUI();
+    connect(&m_TaskWatcher, &QFutureWatcher<void>::finished, this, &OptimizationPanel::onTaskFinished);
+}
+
+OptimizationPanel::~OptimizationPanel()
+{
+    if(m_pGraph) delete m_pGraph;
+    if(m_pCurveModel) delete m_pCurveModel;
+    clearPreviewFoils();
+}
+
+void OptimizationPanel::initPanel(Foil *pFoil, Polar *pPolar)
+{
+    m_pFoil = pFoil;
+    m_pPolar = pPolar;
+
+    if (m_pFoil)
+    {
+        log("Target Foil: " + QString::fromStdString(m_pFoil->name()));
+
+        // Init constraints with foil values
+        m_sbMinThickness->setValue(m_pFoil->maxThickness());
+        m_sbMaxThickness->setValue(m_pFoil->maxThickness());
+        m_sbMinLERadius->setValue(m_pFoil->LERadius());
+        m_sbMinTEGap->setValue(m_pFoil->TEGap());
+        m_sbMaxWiggliness->setValue(m_pFoil->wiggliness());
+        
+        double t = m_pFoil->maxThickness();
+        m_sbMinModulus->setValue(0.12 * t * t);
+        
+        rebuildSectionPreview();
+    }
+}
+
+void OptimizationPanel::setupUI()
+{
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(0,0,0,0);
+
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    mainLayout->addWidget(splitter);
+
+    // --- Left Pane (Visualization) ---
+    auto *leftWidget = new QTabWidget(splitter);
+    
+    // Tab 1: Progress Graph
+    auto *progressTab = new QWidget;
+    auto *progressLayout = new QVBoxLayout(progressTab);
+    
+    m_pGraph = new Graph;
+    m_pCurveModel = new CurveModel;
+    m_pGraph->setCurveModel(m_pCurveModel);
+    m_pGraph->setName("Optimization Progress");
+    m_pGraph->setXVariableList({"Iteration"});
+    m_pGraph->setYVariableList({"Fitness"});
+    m_pGraph->setVariables(0, 0);
+    m_pGraph->showXMajGrid(true);
+    m_pGraph->showYMajGrid(0, true);
+    m_pGraph->setLegendVisible(true);
+
+    m_pFitnessCurve = m_pGraph->addCurve("Best Fitness", AXIS::LEFTYAXIS, true);
+    if(m_pFitnessCurve) {
+        m_pFitnessCurve->setColor(Qt::blue);
+        m_pFitnessCurve->setStipple(Line::SOLID);
+    }
+
+    m_pGraphWt = new GraphWt(this);
+    m_pGraphWt->setGraph(m_pGraph);
+    progressLayout->addWidget(m_pGraphWt);
+    leftWidget->addTab(progressTab, "Fitness Plot");
+
+    // Tab 2: Section Preview
+    m_pSectionView = new FoilWt(this);
+    m_pSectionView->showLegend(false);
+    leftWidget->addTab(m_pSectionView, "Section Preview");
+
+    // Tab 3: Log
+    m_LogOutput = new QTextEdit(this);
+    m_LogOutput->setReadOnly(true);
+    leftWidget->addTab(m_LogOutput, "Log");
+
+    splitter->addWidget(leftWidget);
+
+    // --- Right Pane (Inspector) ---
+    auto *rightScroll = new QScrollArea(splitter);
+    rightScroll->setWidgetResizable(true);
+    rightScroll->setFrameShape(QFrame::NoFrame);
+    
+    auto *inspectorWidget = new QWidget;
+    auto *inspectorLayout = new QVBoxLayout(inspectorWidget);
+    inspectorLayout->setSpacing(10);
+
+    // Header Status
+    m_StatusLabel = new QLabel("Ready.", this);
+    m_StatusLabel->setStyleSheet("font-weight: bold; font-size: 14px;");
+    inspectorLayout->addWidget(m_StatusLabel);
+
+    // Config Group
+    auto *configGroup = new QGroupBox("Configuration", inspectorWidget);
+    auto *configLayout = new QFormLayout(configGroup);
+    m_PresetCombo = new QComboBox(this);
+    m_PresetCombo->addItem("V1: Y-only base nodes", static_cast<int>(PSOTaskFoil::PresetType::V1_Y_Only));
+    m_PresetCombo->addItem("V2: Camber/Thickness", static_cast<int>(PSOTaskFoil::PresetType::V2_Camber_Thickness));
+    configLayout->addRow("Preset:", m_PresetCombo);
+    inspectorLayout->addWidget(configGroup);
+
+    // Geometry Group (New)
+    auto *geoGroup = new QGroupBox("Geometry", inspectorWidget);
+    auto *geoLayout = new QFormLayout(geoGroup);
+    m_sbOptimPoints = new QSpinBox(this);
+    m_sbOptimPoints->setRange(6, 60);
+    m_sbOptimPoints->setValue(8);
+    m_sbOptimPoints->setSuffix(" pts");
+    m_sbOptimPoints->setToolTip("Control points for optimization (fewer = smoother)");
+    geoLayout->addRow("Points:", m_sbOptimPoints);
+
+    m_sbBoundsScale = new QDoubleSpinBox(this);
+    m_sbBoundsScale->setRange(0.1, 5.0);
+    m_sbBoundsScale->setValue(1.0);
+    m_sbBoundsScale->setSingleStep(0.1);
+    m_sbBoundsScale->setSuffix("x");
+    geoLayout->addRow("Bounds Scale:", m_sbBoundsScale);
+    inspectorLayout->addWidget(geoGroup);
+
+    // Objectives Group
+    auto *objGroup = new QGroupBox("Objectives", inspectorWidget);
+    auto *objLayout = new QGridLayout(objGroup);
+    objLayout->addWidget(new QLabel("Objective"), 0, 0);
+    objLayout->addWidget(new QLabel("Target"), 0, 1);
+    
+    m_ObjectiveCombo = new QComboBox(this);
+    m_ObjectiveCombo->addItem("Minimize Cd", static_cast<int>(PSOTaskFoil::ObjectiveType::MinimizeCd));
+    m_ObjectiveCombo->addItem("Maximize L/D", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeLD));
+    
+    m_TargetModeCombo = new QComboBox(this);
+    m_TargetModeCombo->addItem("Fixed Alpha", static_cast<int>(PSOTaskFoil::TargetMode::Alpha));
+    m_TargetModeCombo->addItem("Fixed CL", static_cast<int>(PSOTaskFoil::TargetMode::Cl));
+
+    m_TargetValueSpin = new QDoubleSpinBox(this);
+    m_TargetValueSpin->setRange(-20, 20); 
+    m_TargetValueSpin->setValue(0.5);
+
+    objLayout->addWidget(m_ObjectiveCombo, 1, 0);
+    objLayout->addWidget(m_TargetModeCombo, 1, 1);
+    objLayout->addWidget(m_TargetValueSpin, 1, 2);
+    inspectorLayout->addWidget(objGroup);
+
+    // Constraints Group
+    auto *constraintsGroup = new QGroupBox("Constraints", inspectorWidget);
+    auto *conLayout = new QGridLayout(constraintsGroup);
+    
+    conLayout->addWidget(new QLabel("Constraint"), 0, 0);
+    conLayout->addWidget(new QLabel("Enabled"), 0, 1);
+    conLayout->addWidget(new QLabel("Limit"), 0, 2);
+
+    int row = 1;
+    auto addConRow = [&](QString name, QCheckBox*& chk, QDoubleSpinBox*& sb, double val, double step, double max) {
+        chk = new QCheckBox(this); 
+        sb = new QDoubleSpinBox(this);
+        sb->setRange(0, max);
+        sb->setValue(val);
+        sb->setSingleStep(step);
+        sb->setDecimals(4);
+        sb->setEnabled(false);
+        connect(chk, &QCheckBox::toggled, sb, &QDoubleSpinBox::setEnabled);
+        
+        conLayout->addWidget(new QLabel(name), row, 0);
+        conLayout->addWidget(chk, row, 1);
+        conLayout->addWidget(sb, row, 2);
+        row++;
+    };
+
+    addConRow("Min Thickness (t/c)", m_chkMinThickness, m_sbMinThickness, 0.08, 0.001, 0.5);
+    addConRow("Max Thickness (t/c)", m_chkMaxThickness, m_sbMaxThickness, 0.15, 0.001, 0.5);
+    addConRow("Min LE Radius", m_chkMinLERadius, m_sbMinLERadius, 0.01, 0.001, 0.1);
+    addConRow("Min TE Thickness", m_chkMinTEGap, m_sbMinTEGap, 0.002, 0.0005, 0.05);
+    addConRow("Max Wiggliness", m_chkMaxWiggliness, m_sbMaxWiggliness, 1.0, 0.1, 100.0);
+    addConRow("Min Section Modulus", m_chkMinModulus, m_sbMinModulus, 0.001, 0.0001, 0.1);
+    inspectorLayout->addWidget(constraintsGroup);
+
+    inspectorLayout->addStretch();
+    
+    // Actions Group (Footer)
+    auto *actionGroup = new QGroupBox("Actions", inspectorWidget);
+    auto *actionLayout = new QVBoxLayout(actionGroup);
+    
+    m_ProgressBar = new QProgressBar(this);
+    m_ProgressBar->setRange(0, 100);
+    m_ProgressBar->setValue(0);
+    actionLayout->addWidget(m_ProgressBar);
+
+    auto *btnLayout = new QHBoxLayout;
+    m_RunButton = new QPushButton("Run", this);
+    connect(m_RunButton, &QPushButton::clicked, this, &OptimizationPanel::onRun);
+    btnLayout->addWidget(m_RunButton);
+
+    m_CancelButton = new QPushButton("Stop", this);
+    connect(m_CancelButton, &QPushButton::clicked, this, &OptimizationPanel::onCancel);
+    m_CancelButton->setEnabled(false);
+    btnLayout->addWidget(m_CancelButton);
+
+    m_ApplyBestButton = new QPushButton("Apply", this);
+    connect(m_ApplyBestButton, &QPushButton::clicked, this, &OptimizationPanel::onApplyBest);
+    m_ApplyBestButton->setEnabled(false);
+    btnLayout->addWidget(m_ApplyBestButton);
+
+    m_CloseButton = new QPushButton("Close", this);
+    connect(m_CloseButton, &QPushButton::clicked, this, &OptimizationPanel::closeRequested);
+    btnLayout->addWidget(m_CloseButton);
+
+    actionLayout->addLayout(btnLayout);
+    inspectorLayout->addWidget(actionGroup);
+
+    rightScroll->setWidget(inspectorWidget);
+    splitter->addWidget(rightScroll);
+
+    // Initial sizes
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 2);
+}
+
+void OptimizationPanel::log(const QString &msg)
+{
+    m_LogOutput->append(msg);
+}
+
+void OptimizationPanel::onRun()
+{
+    if(!m_pFoil || !m_pPolar) {
+        QMessageBox::warning(this, "Error", "No foil or polar selected.");
+        return;
+    }
+
+    if(m_TaskWatcher.isRunning()) return;
+
+    if(m_pTask) {
+        delete m_pTask;
+        m_pTask = nullptr;
+    }
+
+    m_pTask = new PSOTaskFoil();
+    m_pTask->setParent(this);
+
+    m_pTask->setFoil(m_pFoil);
+    m_pTask->setPolar(m_pPolar);
+
+    PSOTaskFoil::PresetType preset = static_cast<PSOTaskFoil::PresetType>(m_PresetCombo->currentData().toInt());
+    m_pTask->setPreset(preset);
+
+    m_pTask->setOptimizationPoints(m_sbOptimPoints->value());
+    m_pTask->setBoundsScale(m_sbBoundsScale->value());
+
+    m_pTask->initVariablesFromFoil();
+
+    if(m_pTask->nVariables() == 0) {
+        delete m_pTask;
+        m_pTask = nullptr;
+        QMessageBox::warning(this, "Error", "Foil has no optimizable variables.");
+        return;
+    }
+
+    // Configure Objectives
+    m_pTask->setNObjectives(1);
+    m_pTask->setObjective(0, OptObjective("Fitness", 0, true, 0.0, 0.0, xfl::MINIMIZE));
+
+    PSOTaskFoil::ObjectiveType objType = static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
+    m_pTask->setObjectiveType(objType);
+
+    // Configure Target
+    PSOTaskFoil::TargetMode targetMode = static_cast<PSOTaskFoil::TargetMode>(m_TargetModeCombo->currentData().toInt());
+    double targetVal = m_TargetValueSpin->value();
+    
+    if (targetMode == PSOTaskFoil::TargetMode::Alpha)
+        m_pTask->setTargetAlpha(targetVal);
+    else
+        m_pTask->setTargetCl(targetVal);
+
+    // Configure Constraints
+    PSOTaskFoil::Constraints constraints;
+    constraints.enabled = true;
+    constraints.minThickness.enabled = m_chkMinThickness->isChecked();
+    constraints.minThickness.value = m_sbMinThickness->value();
+    constraints.maxThickness.enabled = m_chkMaxThickness->isChecked();
+    constraints.maxThickness.value = m_sbMaxThickness->value();
+    constraints.minLERadius.enabled = m_chkMinLERadius->isChecked();
+    constraints.minLERadius.value = m_sbMinLERadius->value();
+    constraints.minTEThickness.enabled = m_chkMinTEGap->isChecked();
+    constraints.minTEThickness.value = m_sbMinTEGap->value();
+    constraints.maxWiggliness.enabled = m_chkMaxWiggliness->isChecked();
+    constraints.maxWiggliness.value = m_sbMaxWiggliness->value();
+    constraints.minSectionModulus.enabled = m_chkMinModulus->isChecked();
+    constraints.minSectionModulus.value = m_sbMinModulus->value();
+    m_pTask->setConstraints(constraints);
+
+    updateUI(true);
+    m_StatusLabel->setText("Optimizing...");
+    m_ProgressBar->setRange(0, 0);
+    m_ProgressBar->setValue(0);
+    m_LogOutput->clear();
+    log("Optimization started.");
+
+    m_pFitnessCurve->clear();
+    m_pGraph->resetLimits();
+    m_pGraphWt->update();
+    rebuildSectionPreview();
+
+    m_RunActive = true;
+    QCoreApplication::processEvents();
+
+    m_pTask->onMakeParticleSwarm();
+    m_pTask->onStartIterations();
+    
+    onTaskFinished();
+}
+
+void OptimizationPanel::onCancel()
+{
+    if(m_pTask) {
+        m_pTask->cancelAnalyis();
+        m_StatusLabel->setText("Cancelling...");
+        log("Cancel requested...");
+    }
+}
+
+void OptimizationPanel::onApplyBest()
+{
+    if(!m_pTask || !m_BestValid) return;
+
+    Foil *pNewFoil = m_pTask->createOptimizedFoil(m_BestParticle);
+    if(pNewFoil)
+    {
+        emit foilCreated(pNewFoil);
+        m_StatusLabel->setText("Foil created: " + QString::fromStdString(pNewFoil->name()));
+        log("Foil created: " + QString::fromStdString(pNewFoil->name()));
+    }
+}
+
+void OptimizationPanel::onTaskFinished()
+{
+    m_RunActive = false;
+    if(m_pTask && m_pTask->isFinished()) return;
+    updateUI(false);
+}
+
+void OptimizationPanel::updateUI(bool isRunning)
+{
+    m_RunButton->setEnabled(!isRunning);
+    m_CancelButton->setEnabled(isRunning);
+    m_ApplyBestButton->setEnabled(!isRunning && m_BestValid);
+    m_PresetCombo->setEnabled(!isRunning);
+    m_ObjectiveCombo->setEnabled(!isRunning);
+}
+
+void OptimizationPanel::customEvent(QEvent *event)
+{
+    if(event->type() == OPTIM_MAKESWARM_EVENT)
+    {
+        log("Swarm initialized.");
+        m_ProgressBar->setRange(0, PSOTask::s_MaxIter);
+        m_ProgressBar->setValue(0);
+    }
+    else if(event->type() == OPTIM_ITER_EVENT)
+    {
+        OptimEvent *pEvent = static_cast<OptimEvent*>(event);
+        if(pEvent) {
+            m_ProgressBar->setValue(pEvent->iter());
+            m_StatusLabel->setText(QString("Iteration %1 / %2").arg(pEvent->iter()).arg(PSOTask::s_MaxIter));
+            
+            double bestFitness = pEvent->particle().fitness(0);
+            m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
+            if (pEvent->iter() % 5 == 0) {
+                m_pGraph->resetLimits();
+                m_pGraphWt->update();
+                updateCandidatePreview(pEvent->particle());
+            }
+        }
+    }
+    else if(event->type() == OPTIM_END_EVENT)
+    {
+        m_StatusLabel->setText("Optimization finished.");
+        log("Optimization finished.");
+        m_ProgressBar->setValue(PSOTask::s_MaxIter);
+        
+        OptimEvent *pEvent = static_cast<OptimEvent*>(event);
+        if(pEvent && m_pTask) {
+             m_BestParticle = pEvent->particle();
+             m_BestValid = m_BestParticle.isConverged();
+             log(QString("Best Fitness: %1").arg(m_BestParticle.fitness(0)));
+             updateCandidatePreview(m_BestParticle);
+        }
+        updateUI(false);
+    }
+}
+
+void OptimizationPanel::clearPreviewFoils()
+{
+    if(m_pSectionView)
+    {
+        m_pSectionView->clearFoils();
+        m_pSectionView->setBufferFoil(nullptr);
+    }
+
+    delete m_pGhostFoil;
+    m_pGhostFoil = nullptr;
+    delete m_pPreviewFoil;
+    m_pPreviewFoil = nullptr;
+}
+
+void OptimizationPanel::rebuildSectionPreview()
+{
+    clearPreviewFoils();
+
+    if(!m_pFoil || !m_pSectionView)
+        return;
+
+    m_pGhostFoil = new Foil(m_pFoil);
+    m_pGhostFoil->setName(m_pFoil->name() + "_ghost");
+    m_pGhostFoil->setLineStipple(Line::DASH);
+    m_pGhostFoil->setLineWidth(std::max(1, m_pFoil->lineWidth()));
+    m_pGhostFoil->setLineColor(fl5Color(160, 160, 160));
+    m_pGhostFoil->setFilled(false);
+    m_pGhostFoil->setVisible(true);
+
+    m_pPreviewFoil = new Foil(m_pFoil);
+    m_pPreviewFoil->setName(m_pFoil->name() + "_candidate");
+    m_pPreviewFoil->setLineStipple(Line::SOLID);
+    m_pPreviewFoil->setLineWidth(std::max(2, m_pFoil->lineWidth()));
+    m_pPreviewFoil->setLineColor(m_pFoil->lineColor());
+    m_pPreviewFoil->setFilled(false);
+    m_pPreviewFoil->setVisible(true);
+
+    m_pSectionView->addFoil(m_pGhostFoil);
+    m_pSectionView->setBufferFoil(m_pPreviewFoil);
+    m_pSectionView->update();
+}
+
+void OptimizationPanel::updateCandidatePreview(const Particle &particle)
+{
+    if(!m_pTask || !m_pSectionView)
+        return;
+
+    Foil *pNewFoil = m_pTask->createOptimizedFoil(particle);
+    if(!pNewFoil)
+        return;
+
+    pNewFoil->setLineStipple(Line::SOLID);
+    if(m_pFoil)
+    {
+        pNewFoil->setLineWidth(std::max(2, m_pFoil->lineWidth()));
+        pNewFoil->setLineColor(m_pFoil->lineColor());
+    }
+    pNewFoil->setFilled(false);
+    pNewFoil->setVisible(true);
+
+    delete m_pPreviewFoil;
+    m_pPreviewFoil = pNewFoil;
+
+    m_pSectionView->setBufferFoil(m_pPreviewFoil);
+    m_pSectionView->update();
+}
