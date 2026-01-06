@@ -41,11 +41,13 @@ For full workflow details: `bd prime`
 ## Coding Style & Naming Conventions
 - C++ with Qt conventions: `CamelCase` classes, `m_` prefixes for member fields.
 - Follow existing module layout and include ordering patterns.
+- New modules/files created in this project should use Johan Hedlund in the file header (not Andre Deperrois).
 
 ## Testing Guidelines
 - No formal unit tests detected; prefer small deterministic runs in `API_examples/` for new solver paths.
 - For new optimization logic, add a minimal reproducible example and log expected outputs.
 - For any code change, add or update tests for the new behavior and run them before committing; capture the commands used.
+- Run header lint for new files: `scripts/lint_headers.sh` (add a base ref if upstream/origin isn't available).
 
 ## Commit & Pull Request Guidelines
 - Recommendation: use short, imperative summaries (e.g., “Add foil optimization scaffold”).

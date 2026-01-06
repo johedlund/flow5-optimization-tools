@@ -90,6 +90,7 @@ bd sync               # Sync at session end (mandatory)
 
 - C++ with Qt conventions: `CamelCase` classes, `m_` prefix for member fields
 - Follow existing include ordering and module layout patterns
+- New modules/files should use Johan Hedlund in the file header (not Andre Deperrois)
 - Qt 6 + C++17 standard
 - Linear algebra: OpenBLAS (Linux), MKL (Windows), Accelerate (macOS)
 
@@ -98,3 +99,4 @@ bd sync               # Sync at session end (mandatory)
 No formal unit test framework. For new solver/optimization code:
 - Add minimal reproducible examples in `API_examples/`
 - Run headless tests before committing: `API_examples/foiloptimize/run_test.sh`
+- Run header lint for new files: `scripts/lint_headers.sh upstream/main`

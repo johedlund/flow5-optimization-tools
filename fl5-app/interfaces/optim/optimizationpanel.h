@@ -1,7 +1,7 @@
 /****************************************************************************
 
     flow5 application
-    Copyright © 2026 André Deperrois
+    Copyright © 2026 Johan Hedlund
 
     This file is part of flow5.
 

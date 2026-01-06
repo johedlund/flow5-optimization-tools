@@ -68,6 +68,11 @@ export FL5_LIB_DIR=$(pwd)/fl5-lib
 ./API_examples/foiloptimize/run_test.sh
 ```
 
+**Header lint (new files vs base ref):**
+```bash
+scripts/lint_headers.sh upstream/main
+```
+
 ### Issue Tracking (Beads)
 
 This project uses `beads` (local CLI tool) for issue tracking.
@@ -100,6 +105,7 @@ This project uses `beads` (local CLI tool) for issue tracking.
     *   Classes: `CamelCase`
     *   Members: `m_variableName`
     *   Methods: `camelCase`
+    *   New modules/files should use Johan Hedlund in the file header (not Andre Deperrois).
 *   **Memory Management:** Be mindful of the global object registry.
 *   **Logging:** Use `globals::pushToLog(msg)` for application-wide logging.
 
