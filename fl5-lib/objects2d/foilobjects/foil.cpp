@@ -277,6 +277,18 @@ double Foil::xThickness() const
     return xthick;
 }
 
+double Foil::wiggliness() const
+{
+    return m_CubicSpline.totalSquaredCurvature(0.0, 1.0);
+}
+
+double Foil::LERadius() const
+{
+    double k = m_CubicSpline.curvature(m_CSfracLE);
+    if(fabs(k) > 1.0e-6) return 1.0/fabs(k);
+    return 1.0e6; // Large radius for flat LE
+}
+
 
 void Foil::setThickness(double xthick, double thick)
 {

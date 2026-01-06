@@ -81,8 +81,10 @@ linux-g++ {
     #   are known either by defining them at system level
     #   or by setting them explicitely in this section
     #   The include paths to the development headers must be set explicitely
+        INCLUDEPATH += /usr/include/opencascade/
         INCLUDEPATH += /usr/local/include/opencascade/
         LIBS += -L/usr/local/lib/
+        LIBS += -L/usr/lib/x86_64-linux-gnu/
 
 }
 
@@ -165,7 +167,8 @@ LIBS += \
     -lTKBRep \
     -lTKBool \
     -lTKCDF \
-    -lTKDESTEP \
+    -lTKSTEP \
+    -lTKXDESTEP \
     -lTKFillet \
     -lTKG2d \
     -lTKG3d \

@@ -84,6 +84,7 @@ void XDirectMenus::createFoilMenus()
             }
             m_pActiveFoilMenu->addSeparator();
             m_pActiveFoilMenu->addAction(pActions->m_pDefinePolarAct);
+            m_pActiveFoilMenu->addAction(pActions->m_pOptimFoilAct);
             m_pActiveFoilMenu->addAction(pActions->m_pDuplicatePolars);
             QMenu *pPolarsMenu = m_pActiveFoilMenu->addMenu("Associated polars");
             {
@@ -135,6 +136,10 @@ void XDirectMenus::createPolarMenus()
         m_pXFoilAnalysisMenu->addAction(pActions->m_pDefinePolarAct);
         m_pXFoilAnalysisMenu->addAction(pActions->m_pBatchXFoilAct);
         m_pXFoilAnalysisMenu->addAction(pActions->m_pBatchAltAct);
+        m_pXFoilAnalysisMenu->addSeparator();
+        m_pXFoilAnalysisMenu->addAction(pActions->m_pFluidCalcAct);
+        m_pXFoilAnalysisMenu->addAction(pActions->m_pBeamCalcAct);
+        m_pXFoilAnalysisMenu->addAction(pActions->m_pCavitationCalcAct);
         m_pXFoilAnalysisMenu->addSeparator();
         m_pXFoilAnalysisMenu->addAction(pActions->m_pImportXMLFoilAnalysis);
         m_pXFoilAnalysisMenu->addSeparator();

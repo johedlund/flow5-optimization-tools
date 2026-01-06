@@ -4,9 +4,27 @@ fl5-lib/*.pro.user
 fl5-lib/*.pro.user*
 fl5-app/*.pro.user
 fl5-app/*.pro.user*
+fl5-app/flow5
 XFoil-lib/*.pro.user
 XFoil-lib/*.pro.user*
 *.autosave
 
-
-
+# Local build artifacts
+/.qmake.stash
+/Makefile
+API_examples/foiloptimize/build/
+XFoil-lib/.qmake.stash
+XFoil-lib/Makefile
+XFoil-lib/objects/
+XFoil-lib/libXFoil.so*
+fl5-app/.qmake.stash
+fl5-app/Makefile
+fl5-app/moc/
+fl5-app/objects/
+fl5-app/rcc/
+fl5-lib/.qmake.stash
+fl5-lib/Makefile
+fl5-lib/moc/
+fl5-lib/objects/
+fl5-lib/rcc/
+fl5-lib/libfl5-lib.so*

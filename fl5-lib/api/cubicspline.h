@@ -61,6 +61,7 @@ class FL5LIB_EXPORT CubicSpline : public Spline
         void computeArcCurvatures(std::vector<double> &arccurvatures) const;
         double totalLength() const;
         double totalCurvature(double u0, double u1) const;
+        double totalSquaredCurvature(double u0, double u1) const;
 
         void rePanel(int N);
 

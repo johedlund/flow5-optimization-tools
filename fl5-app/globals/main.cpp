@@ -23,6 +23,11 @@
 *****************************************************************************/
 
 
+#include <cstdlib>
+
+// OpenBLAS thread control (declared here to avoid header conflicts)
+extern "C" void openblas_set_num_threads(int num_threads);
+
 #include <QtCore>
 #include <QApplication>
 #include <QSurfaceFormat>
@@ -129,6 +134,15 @@ void setOGLDefaultFormat(int version)
  */
 int main(int argc, char *argv[])
 {
+    // Prevent OpenBLAS parallel dgetrf segfault in spline solver (hmi.4)
+    // Both env var (for early init) and runtime call (for already-loaded lib)
+#ifdef _WIN32
+    _putenv_s("OPENBLAS_NUM_THREADS", "1");
+#else
+    setenv("OPENBLAS_NUM_THREADS", "1", 1);
+#endif
+    openblas_set_num_threads(1);  // Force single-threaded even if already initialized
+
 #ifdef Q_OS_LINUX
 /*    struct rlimit limit ;
     getrlimit (RLIMIT_STACK, &limit); // The maximum size of the process stack, in bytes.

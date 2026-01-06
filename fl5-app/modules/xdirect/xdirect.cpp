@@ -58,6 +58,11 @@
 #include <interfaces/graphs/globals/graph_globals.h>
 #include <interfaces/graphs/graph/curve.h>
 #include <interfaces/graphs/graph/graph.h>
+#include <interfaces/optim/optimfoildlg.h>
+#include <interfaces/tools/fluidcalcdlg.h>
+#include <interfaces/tools/beamcalcdlg.h>
+#include <interfaces/tools/cavitationcalcdlg.h>
+
 #include <interfaces/view2d/foilsvgwriter.h>
 #include <interfaces/widgets/customdlg/doublevaluedlg.h>
 #include <interfaces/widgets/customdlg/objectpropsdlg.h>
@@ -395,6 +400,7 @@ void XDirect::setControls()
     m_pActions->m_pExportCurFoilSVG->setEnabled(s_pCurFoil);
 
     m_pActions->m_pDefinePolarAct->setEnabled(s_pCurFoil);
+    m_pActions->m_pOptimFoilAct->setEnabled(s_pCurFoil && s_pCurPolar);
     m_pActions->m_pDeleteFoilOpps->setEnabled(s_pCurFoil);
     m_pActions->m_pDeleteFoilPolars->setEnabled(s_pCurFoil);
 
@@ -1340,6 +1346,63 @@ void XDirect::onDefineAnalysis()
         emit projectModified();
     }
     setControls();
+}
+
+void XDirect::onOptimFoil()
+{
+    if(!s_pCurFoil || !s_pCurPolar)
+    {
+        QMessageBox::warning(s_pMainFrame, "Foil optimization",
+                             "Select an active foil and polar before optimizing.");
+        return;
+    }
+
+    OptimFoilDlg *pDlg = new OptimFoilDlg(s_pMainFrame);
+    pDlg->setAttribute(Qt::WA_DeleteOnClose);
+    connect(pDlg, &OptimFoilDlg::foilCreated, this, &XDirect::onFoilCreated);
+    pDlg->initDialog(s_pCurFoil, s_pCurPolar);
+    pDlg->show();
+}
+
+void XDirect::onFluidCalc()
+{
+    FluidCalcDlg *pDlg = new FluidCalcDlg(s_pMainFrame);
+    pDlg->show();
+}
+
+void XDirect::onBeamCalc()
+{
+    BeamCalcDlg *pDlg = new BeamCalcDlg(s_pMainFrame);
+    pDlg->show();
+}
+
+void XDirect::onCavitationCalc()
+{
+    CavitationCalcDlg *pDlg = new CavitationCalcDlg(s_pMainFrame);
+    pDlg->show();
+}
+
+
+void XDirect::onFoilCreated(Foil *pFoil)
+{
+    if(!pFoil)
+        return;
+
+    if(addNewFoil(pFoil))
+    {
+        setFoil(pFoil);
+        m_pFoilExplorer->insertFoil(pFoil);
+        m_pFoilExplorer->selectFoil(pFoil);
+        m_pFoilTable->updateTable();
+        m_pFoilTable->selectFoil(pFoil);
+        m_pDFoilWt->resetLegend();
+
+        emit projectModified();
+        m_bResetCurves = true;
+        updateView();
+    }
+    else
+        delete pFoil;
 }
 
 
@@ -4393,7 +4456,5 @@ bool XDirect::isAllGraphsView() const
     }
     return false;
 }
-
-
 
 

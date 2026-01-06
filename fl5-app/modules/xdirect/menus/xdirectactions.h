@@ -59,8 +59,10 @@ class XDirectActions : QObject
         QAction *m_pExportFoilCpGraphAct, *m_pExportToClipBoard;
         QAction *m_pExportCurFoilDat, *m_pExportCurFoilSVG;
         QAction *m_pDeleteCurFoil, *m_pRenameCurFoil, *m_pDuplicateCurFoil, *m_pFoilDescription;
-        QAction *m_pDerotateFoil;
-        QAction *m_pRefineGlobalFoil;
+                QAction *m_pOptimFoilAct;
+                QAction *m_pFluidCalcAct, *m_pBeamCalcAct, *m_pCavitationCalcAct;
+                QAction *m_pDerotateFoil;
+                    QAction *m_pRefineGlobalFoil;
         QAction *m_pEditCoordsFoil, *m_pScaleFoil;
         QAction *m_pSetTEGap, *m_pSetLERadius, *m_pSetFlap;
         QAction *m_pInterpolateFoils, *m_pNacaFoils, *m_pFoilFromCoords;
@@ -85,4 +87,3 @@ class XDirectActions : QObject
         XDirect *m_pXDirect;
         MainFrame *m_pMainFrame;
 };
-

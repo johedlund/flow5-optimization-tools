@@ -400,6 +400,28 @@ double CubicSpline::totalCurvature(double u0, double u1) const
 }
 
 
+double CubicSpline::totalSquaredCurvature(double u0, double u1) const
+{
+    if(nCtrlPoints()<2) return 0.0;
+
+    GaussQuadrature GQ(7);
+    if(GQ.error())
+    {
+        qDebug("Error in Gaussian quadrature");
+        return 0.0;
+    }
+
+    double curvatureInt = 0.0;
+    for(int jq=0; jq<GQ.order(); jq++)
+    {
+        double u = u0+ GQ.xrel(jq) * (u1-u0);
+        double k = curvature(u);
+        curvatureInt += GQ.weight(jq) * k * k * (u1-u0);
+    }
+    return curvatureInt;
+}
+
+
 bool CubicSpline::serializeFl5(QDataStream &ar, bool bIsStoring)
 {
     Spline::serializeFl5(ar, bIsStoring);

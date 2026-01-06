@@ -37,6 +37,7 @@
 
 
 #define DELTAVAR 0.0001     // minimum difference between varmax and varmin
+#define OPTIM_PENALTY 1.0e12 // penalty for invalid fitness
 
 
 class OptimEvent : public QEvent

@@ -71,6 +71,8 @@ class FL5LIB_EXPORT Foil : public XflObject
         double topSlope(double x)    const;
         double xCamber()             const;
         double xThickness()          const;
+        double wiggliness()          const;
+        double LERadius()            const;
 
         void setCamber(double xcamb, double camb);
         void setThickness(double xthick, double thick);

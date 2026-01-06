@@ -140,6 +140,22 @@ void XDirectActions::makeActions()
     m_pDefinePolarAct->setToolTip("<p>Define a single analysis/polar</p>");
     connect(m_pDefinePolarAct, SIGNAL(triggered()), m_pXDirect, SLOT(onDefineAnalysis()));
 
+    m_pOptimFoilAct = new QAction("Optimize foil...", this);
+    m_pOptimFoilAct->setToolTip("<p>Open the foil optimization dialog</p>");
+    connect(m_pOptimFoilAct, SIGNAL(triggered()), m_pXDirect, SLOT(onOptimFoil()));
+
+    m_pFluidCalcAct = new QAction("Fluid & Reynolds calculator...", this);
+    m_pFluidCalcAct->setToolTip("<p>Open the fluid and Reynolds calculator tool</p>");
+    connect(m_pFluidCalcAct, SIGNAL(triggered()), m_pXDirect, SLOT(onFluidCalc()));
+
+    m_pBeamCalcAct = new QAction("Beam & Spar calculator...", this);
+    m_pBeamCalcAct->setToolTip("<p>Open the beam and spar structural tool</p>");
+    connect(m_pBeamCalcAct, SIGNAL(triggered()), m_pXDirect, SLOT(onBeamCalc()));
+
+    m_pCavitationCalcAct = new QAction("Cavitation calculator...", this);
+    m_pCavitationCalcAct->setToolTip("<p>Open the hydrofoil cavitation analysis tool</p>");
+    connect(m_pCavitationCalcAct, SIGNAL(triggered()), m_pXDirect, SLOT(onCavitationCalc()));
+
     m_pBatchXFoilAct = new QAction("Batch analysis (legacy)", this);
     m_pBatchXFoilAct->setShortcut(QKeySequence(Qt::ALT | Qt::Key_F7));
     m_pBatchXFoilAct->setToolTip("<p>Launches a batch of analyses using all available computer CPU cores</p>");
@@ -358,5 +374,4 @@ void XDirectActions::makeActions()
     m_pShowLegend->setCheckable(true);
     connect(m_pShowLegend, SIGNAL(triggered(bool)), m_pXDirect, SLOT(onShowLegend(bool)));
 }
-
 

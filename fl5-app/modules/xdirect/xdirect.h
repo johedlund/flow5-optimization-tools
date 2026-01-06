@@ -209,6 +209,10 @@ class XDirect : public QObject
         void onExportXMLAnalysis();
         void onFillFoil(bool);
         void onFinishAnalysis();
+        void onFluidCalc();
+        void onBeamCalc();
+        void onCavitationCalc();
+        void onFoilCreated(Foil *pFoil);
         void onFoilCoordinates();
         void onFoilFrom1Spline();
         void onFoilFrom2Splines();
@@ -232,6 +236,7 @@ class XDirect : public QObject
         void onNacaFoils();
         void onOpenAnalysisWindow();
         void onDuplicateAnalyses();
+        void onOptimFoil();
         void onOpPointGraphChanged();
         void onOpPointProps();
         void onOpPointView();
@@ -323,5 +328,4 @@ class XDirect : public QObject
         static OpPoint* s_pCurOpp;
 
 };
-
 

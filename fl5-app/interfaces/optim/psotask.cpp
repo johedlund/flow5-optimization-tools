@@ -24,6 +24,7 @@
 
 
 #include <QtConcurrent/QtConcurrent>
+#include <QCoreApplication>
 
 #include <interfaces/optim/psotask.h>
 #include <api/constants.h>
@@ -48,6 +49,7 @@ PSOTask::PSOTask()
     m_bConverged = false;
     m_Iter = 0;
     m_Status = xfl::PENDING;
+    m_pParent = nullptr;
 }
 
 
@@ -175,6 +177,7 @@ void PSOTask::onMakeParticleSwarm()
         {
             calcFitness(&m_Swarm[i], false, true);
             if(isCancelled()) break;
+            QCoreApplication::processEvents();
         }
     }
 
@@ -184,25 +187,24 @@ void PSOTask::onMakeParticleSwarm()
 
     outputMsg(QString::asprintf("Made %d random particles\n", int(m_Swarm.size())));
 
+    makeParetoFrontier();
 
-    QEvent *pEvent = new QEvent(OPTIM_MAKESWARM_EVENT);
-    qApp->postEvent(m_pParent, pEvent);
-
-    //    thread()->exit(0); // exit event loop so that finished() is emitted
-
-    // this task may be resumed, so move it back to the main GUI thread
- //   moveToThread(QApplication::instance()->thread());
+    if(m_pParent)
+    {
+        QEvent *pEvent = new QEvent(OPTIM_MAKESWARM_EVENT);
+        qApp->postEvent(m_pParent, pEvent);
+    }
 }
 
 
 void PSOTask::onStartIterations()
 {
-/*    if(m_Swarm.size()==0 || m_Swarm.size()!=s_PopSize)
+    if(m_Swarm.size()==0 || m_Swarm.size()!=s_PopSize)
     {
         m_Status = xfl::PENDING;
         outputMsg("Invalid swarm size\n");
         postPSOEvent(0); // notifiy finished
-        moveToThread(QApplication::instance()->thread());
+        // moveToThread(QCoreApplication::instance()->thread());
         return;
     }
 
@@ -213,8 +215,9 @@ void PSOTask::onStartIterations()
     do
     {
         onIteration();
+        QCoreApplication::processEvents(); // Keep UI/Events responsive if running in main thread
     }
-    while(m_Status==xfl::RUNNING);*/
+    while(m_Status==xfl::RUNNING);
 }
 
 
@@ -302,7 +305,7 @@ void PSOTask::onIteration()
 
         // this task may be resumed, so move it back to the main GUI thread
 
-        moveToThread(qApp->instance()->thread());
+        // moveToThread(qApp->instance()->thread());
     }
     else
     {
@@ -390,9 +393,10 @@ void PSOTask::moveParticle(Particle *pParticle) const
 /** Posted when an iteration has ended */
 void PSOTask::postIterEvent(int iBest)
 {
-    OptimEvent pIterEvent(OPTIM_ITER_EVENT, m_Iter, iBest, m_Pareto[iBest]);
-//    qApp->postEvent(m_pParent, pIterEvent);
-    emit iterEvent(&pIterEvent);
+    if(iBest<0 || iBest>=m_Pareto.size()) return;
+    if(!m_pParent) return;
+    OptimEvent *pIterEvent = new OptimEvent(OPTIM_ITER_EVENT, m_Iter, iBest, m_Pareto.at(iBest));
+    qApp->postEvent(m_pParent, pIterEvent);
 }
 
 
@@ -400,9 +404,9 @@ void PSOTask::postIterEvent(int iBest)
 void PSOTask::postPSOEvent(int iBest)
 {
     if(iBest<0||iBest>=m_Pareto.size()) return;
+    if(!m_pParent) return;
     OptimEvent *pPSOEvent = new OptimEvent(OPTIM_END_EVENT, m_Iter, iBest, m_Pareto.at(iBest));
     qApp->postEvent(m_pParent, pPSOEvent);
-
 }
 
 
