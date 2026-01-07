@@ -229,12 +229,12 @@ int main(int argc, char **argv)
     v2Task.setPreset(PSOTaskFoil::PresetType::V2_Camber_Thickness);
     v2Task.initVariablesFromFoil();
 
-    // V2 is not implemented - should return zero variables
+    // V2 preset now initializes camber/thickness variables
     const int v2Vars = v2Task.nVariables();
-    const bool v2Ok = (v2Vars == 0); // Expected: unimplemented returns empty
+    const bool v2Ok = (v2Vars >= 4); // Expect camber/thickness variables (current: 4)
 
     std::cout << "  Preset: V2_Camber_Thickness\n";
-    std::cout << "  Variables: " << v2Vars << " (Expected: 0 - unimplemented)\n";
+    std::cout << "  Variables: " << v2Vars << " (Expected: >= 4 camber/thickness vars)\n";
     std::cout << "  Result: " << (v2Ok ? "PASS" : "FAIL") << "\n";
 
     // 7. MINIMAL GEOMETRY EDGE CASE
