@@ -180,6 +180,8 @@ int main(int argc, char **argv)
     if(!pExtremePolar)
     {
         std::cerr << "  FAIL: could not create extreme polar\n";
+        globals::deleteObjects();
+        return 2;
     }
     pExtremePolar->setName("ExtremePolar");
     pExtremePolar->setAoaSpec(85.0); // Extreme AoA likely to fail
