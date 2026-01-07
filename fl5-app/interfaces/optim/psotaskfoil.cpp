@@ -301,27 +301,25 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 
     const int nOptim = int(m_OptimBaseNodes.size());
     m_Variable.reserve(nOptim);
-    const double yLE = m_OptimBaseNodes[leOptimIndex].y;
+    // const double yLE = m_OptimBaseNodes[leOptimIndex].y; // yLE unused if we freeze neighbors
 
     for(int i=0; i<nOptim; ++i)
     {
-        if(i == 0 || i == nOptim-1 || i == leOptimIndex)
+        // Freeze LE and immediate neighbors to preserve nose curvature and prevent artifacts
+        if(i == 0 || i == nOptim-1 || 
+           i == leOptimIndex || 
+           i == leOptimIndex - 1 || 
+           i == leOptimIndex + 1)
             continue;
 
         const double y = m_OptimBaseNodes[i].y;
         double minY = y - delta;
         double maxY = y + delta;
 
-        // Constraint: Prevent crossover at Leading Edge
-        // If point is originally above LE, keep it above (Top Surface)
-        // If point is originally below LE, keep it below (Bottom Surface)
-        // This prevents the "loop" artifact near LE when delta is large relative to local thickness
-        if (y >= yLE) {
-            minY = std::max(minY, yLE + 1.0e-6);
-        } else {
-            maxY = std::min(maxY, yLE - 1.0e-6);
-        }
-
+        // No need for LE crossover clamping if we freeze the neighbors
+        // But we keep basic sanity checks if needed, or just revert to simple bounds.
+        // Reverting to simple bounds as neighbors are now fixed.
+        
         m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
         m_VarToBase.push_back(i);
     }
