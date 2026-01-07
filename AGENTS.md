@@ -2,16 +2,16 @@
 
 ## Agent Git Identity
 
-To track contributions by agent, configure git user/email at the start of your session:
+To track contributions by agent, export git identity variables at the start of your session (this works for parallel sessions):
 
 - **Gemini:**
-  `git config user.name "Gemini Agent" && git config user.email "gemini@agent.flow5"`
+  `export GIT_AUTHOR_NAME="Gemini Agent" GIT_AUTHOR_EMAIL="gemini@agent.flow5" GIT_COMMITTER_NAME="Gemini Agent" GIT_COMMITTER_EMAIL="gemini@agent.flow5"`
 - **Claude:**
-  `git config user.name "Claude Agent" && git config user.email "claude@agent.flow5"`
+  `export GIT_AUTHOR_NAME="Claude Agent" GIT_AUTHOR_EMAIL="claude@agent.flow5" GIT_COMMITTER_NAME="Claude Agent" GIT_COMMITTER_EMAIL="claude@agent.flow5"`
 - **Codex:**
-  `git config user.name "Codex Agent" && git config user.email "codex@agent.flow5"`
+  `export GIT_AUTHOR_NAME="Codex Agent" GIT_AUTHOR_EMAIL="codex@agent.flow5" GIT_COMMITTER_NAME="Codex Agent" GIT_COMMITTER_EMAIL="codex@agent.flow5"`
 
-**Instruction:** Run the appropriate config command immediately upon starting a session.
+**Instruction:** Run the appropriate export command immediately upon starting a session.
 
 ## Issue Tracking
 
