@@ -301,7 +301,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 
     const int nOptim = int(m_OptimBaseNodes.size());
     m_Variable.reserve(nOptim);
-    // const double yLE = m_OptimBaseNodes[leOptimIndex].y; // yLE unused if we freeze neighbors
+    const double yLE = m_OptimBaseNodes[leOptimIndex].y;
 
     for(int i=0; i<nOptim; ++i)
     {
@@ -316,9 +316,13 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         double minY = y - delta;
         double maxY = y + delta;
 
-        // No need for LE crossover clamping if we freeze the neighbors
-        // But we keep basic sanity checks if needed, or just revert to simple bounds.
-        // Reverting to simple bounds as neighbors are now fixed.
+        // Constraint: Prevent crossover at Leading Edge level for remaining points
+        // This prevents points further back from crossing the nose line and causing tangles
+        if (y >= yLE) {
+            minY = std::max(minY, yLE + 1.0e-6);
+        } else {
+            maxY = std::min(maxY, yLE - 1.0e-6);
+        }
         
         m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
         m_VarToBase.push_back(i);
