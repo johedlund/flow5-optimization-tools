@@ -68,6 +68,141 @@ bool isMonotonicXAboutLE(const std::vector<Node2d> &pts, double eps)
     return true;
 }
 
+double curvatureFromPoints(const Node2d &a, const Node2d &b, const Node2d &c)
+{
+    const double abx = b.x - a.x;
+    const double aby = b.y - a.y;
+    const double bcx = c.x - b.x;
+    const double bcy = c.y - b.y;
+    const double acx = c.x - a.x;
+    const double acy = c.y - a.y;
+
+    const double lab = std::sqrt(abx * abx + aby * aby);
+    const double lbc = std::sqrt(bcx * bcx + bcy * bcy);
+    const double lac = std::sqrt(acx * acx + acy * acy);
+
+    if(lab < 1.0e-9 || lbc < 1.0e-9 || lac < 1.0e-9)
+        return 0.0;
+
+    const double cross = std::fabs(abx * acy - aby * acx);
+    return 2.0 * cross / (lab * lbc * lac);
+}
+
+double maxCurvatureNearLE(const std::vector<Node2d> &pts, double leLimitX)
+{
+    double maxCurv = 0.0;
+    const int n = static_cast<int>(pts.size());
+    for(int i=1; i<n-1; ++i)
+    {
+        if(pts[i].x <= leLimitX)
+        {
+            const double curv = curvatureFromPoints(pts[i-1], pts[i], pts[i+1]);
+            if(curv > maxCurv)
+                maxCurv = curv;
+        }
+    }
+    return maxCurv;
+}
+
+double maxTurnAngleNearLE(const std::vector<Node2d> &pts, double leLimitX)
+{
+    double maxAngle = 0.0;
+    const int n = static_cast<int>(pts.size());
+    for(int i=1; i<n-1; ++i)
+    {
+        if(pts[i].x <= leLimitX)
+        {
+            const double v0x = pts[i].x - pts[i-1].x;
+            const double v0y = pts[i].y - pts[i-1].y;
+            const double v1x = pts[i+1].x - pts[i].x;
+            const double v1y = pts[i+1].y - pts[i].y;
+            const double l0 = std::sqrt(v0x * v0x + v0y * v0y);
+            const double l1 = std::sqrt(v1x * v1x + v1y * v1y);
+            if(l0 < 1.0e-9 || l1 < 1.0e-9)
+                continue;
+            double dot = (v0x * v1x + v0y * v1y) / (l0 * l1);
+            dot = std::max(-1.0, std::min(1.0, dot));
+            const double angle = std::acos(dot);
+            if(angle > maxAngle)
+                maxAngle = angle;
+        }
+    }
+    return maxAngle;
+}
+
+bool interpolateY(const std::vector<Node2d> &curve, double x, double &yOut)
+{
+    const int n = static_cast<int>(curve.size());
+    if(n < 2)
+        return false;
+
+    for(int i=0; i<n-1; ++i)
+    {
+        const double x0 = curve[i].x;
+        const double x1 = curve[i+1].x;
+        if((x0 <= x && x <= x1) || (x1 <= x && x <= x0))
+        {
+            const double dx = x1 - x0;
+            if(std::fabs(dx) < 1.0e-12)
+            {
+                yOut = curve[i].y;
+                return true;
+            }
+            const double t = (x - x0) / dx;
+            yOut = curve[i].y + t * (curve[i+1].y - curve[i].y);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasPositiveThicknessNearLE(const std::vector<Node2d> &pts, double minX, double chord)
+{
+    const int n = static_cast<int>(pts.size());
+    if(n < 4 || chord <= 0.0)
+        return true;
+
+    int leIndex = 0;
+    double leX = pts[0].x;
+    for(int i=1; i<n; ++i)
+    {
+        if(pts[i].x < leX)
+        {
+            leX = pts[i].x;
+            leIndex = i;
+        }
+    }
+
+    std::vector<Node2d> top;
+    std::vector<Node2d> bot;
+    top.reserve(leIndex + 1);
+    bot.reserve(n - leIndex);
+
+    for(int i=leIndex; i>=0; --i)
+        top.push_back(pts[i]);
+    for(int i=leIndex; i<n; ++i)
+        bot.push_back(pts[i]);
+
+    const double eps = chord * 1.0e-5;
+    const double x0 = minX + chord * 0.005;
+    const double x1 = minX + chord * 0.05;
+    const int samples = 5;
+
+    for(int i=0; i<samples; ++i)
+    {
+        const double t = (samples == 1) ? 0.0 : double(i) / double(samples - 1);
+        const double x = x0 + (x1 - x0) * t;
+        double yTop = 0.0;
+        double yBot = 0.0;
+        if(!interpolateY(top, x, yTop) || !interpolateY(bot, x, yBot))
+            continue;
+        if(yTop <= yBot + eps)
+            return false;
+    }
+
+    return true;
+}
+
 bool hasSelfIntersection(const std::vector<Node2d> &pts)
 {
     const int n = static_cast<int>(pts.size());
@@ -87,7 +222,52 @@ bool hasSelfIntersection(const std::vector<Node2d> &pts)
     return false;
 }
 
-bool isFoilGeometryValid(const Foil &foil)
+struct LeMetrics
+{
+    bool hasMonotonic{false};
+    bool hasPositiveThickness{false};
+    bool hasSelfIntersection{false};
+    double leRadius{0.0};
+    double maxCurvature{0.0};
+    double maxTurnAngle{0.0};
+};
+
+bool computeLeMetrics(const Foil &foil, LeMetrics &metrics)
+{
+    metrics = {};
+    metrics.leRadius = foil.LERadius();
+
+    const std::vector<Node2d> &pts = foil.cubicSpline().outputPts();
+    if(pts.size() < 4)
+        return false;
+
+    double minX = pts.front().x;
+    double maxX = pts.front().x;
+    for(const auto &pt : pts)
+    {
+        minX = std::min(minX, pt.x);
+        maxX = std::max(maxX, pt.x);
+    }
+    const double chord = maxX - minX;
+    if(chord <= 0.0)
+        return false;
+
+    const double eps = chord * 1.0e-4;
+    metrics.hasMonotonic = isMonotonicXAboutLE(pts, eps);
+    metrics.hasPositiveThickness = hasPositiveThicknessNearLE(pts, minX, chord);
+    metrics.hasSelfIntersection = hasSelfIntersection(pts);
+    metrics.maxCurvature = maxCurvatureNearLE(pts, minX + chord * 0.06);
+    metrics.maxTurnAngle = maxTurnAngleNearLE(pts, minX + chord * 0.06);
+    return true;
+}
+
+bool isFoilGeometryValid(const Foil &foil,
+                         double baseLERadius,
+                         double baseMaxLECurv,
+                         double baseMaxLETurnAngle,
+                         bool baseHasMonotonicLE,
+                         bool baseHasPositiveThicknessLE,
+                         bool baseHasSelfIntersection)
 {
     if(foil.TEGap() < 0.0)
         return false;
@@ -96,11 +276,50 @@ bool isFoilGeometryValid(const Foil &foil)
     if(pts.size() < 4)
         return true;
 
-    if(!isMonotonicXAboutLE(pts, 1.0e-6))
+    double minX = pts.front().x;
+    double maxX = pts.front().x;
+    for(const auto &pt : pts)
+    {
+        minX = std::min(minX, pt.x);
+        maxX = std::max(maxX, pt.x);
+    }
+    const double chord = maxX - minX;
+    if(chord <= 0.0)
         return false;
 
-    if(hasSelfIntersection(pts))
+    const double eps = chord * 1.0e-4;
+    if(baseHasMonotonicLE && !isMonotonicXAboutLE(pts, eps))
         return false;
+
+    if(!baseHasSelfIntersection && hasSelfIntersection(pts))
+        return false;
+
+    if(baseHasPositiveThicknessLE && !hasPositiveThicknessNearLE(pts, minX, chord))
+        return false;
+
+    if(std::isfinite(baseLERadius) && baseLERadius > 0.0)
+    {
+        const double minRadius = std::max(baseLERadius * 0.25, chord * 1.0e-4);
+        if(foil.LERadius() < minRadius)
+            return false;
+    }
+
+    if(std::isfinite(baseMaxLECurv) && baseMaxLECurv > 0.0)
+    {
+        const double leLimitX = minX + chord * 0.06;
+        const double maxCurv = maxCurvatureNearLE(pts, leLimitX);
+        if(maxCurv > baseMaxLECurv * 2.5)
+            return false;
+    }
+
+    if(std::isfinite(baseMaxLETurnAngle) && baseMaxLETurnAngle > 0.0)
+    {
+        const double leLimitX = minX + chord * 0.06;
+        const double maxAngle = maxTurnAngleNearLE(pts, leLimitX);
+        const double maxAllowed = std::max(baseMaxLETurnAngle * 1.6, baseMaxLETurnAngle + 0.4);
+        if(maxAngle > maxAllowed)
+            return false;
+    }
 
     return true;
 }
@@ -263,9 +482,25 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     m_VarToBase.clear();
     m_OptimBaseNodes.clear();
     m_OptimBaseIndex.clear();
+    m_BaseLERadius = 0.0;
+    m_BaseMaxLECurvature = 0.0;
+    m_BaseMaxLETurnAngle = 0.0;
+    m_BaseHasMonotonicLE = false;
+    m_BaseHasPositiveThicknessLE = false;
+    m_BaseHasSelfIntersection = false;
 
     if(!m_pFoil)
         return;
+
+    auto applyMetrics = [this](const LeMetrics &metrics)
+    {
+        m_BaseLERadius = metrics.leRadius;
+        m_BaseMaxLECurvature = metrics.maxCurvature;
+        m_BaseMaxLETurnAngle = metrics.maxTurnAngle;
+        m_BaseHasMonotonicLE = metrics.hasMonotonic;
+        m_BaseHasPositiveThicknessLE = metrics.hasPositiveThickness;
+        m_BaseHasSelfIntersection = metrics.hasSelfIntersection;
+    };
 
     if(m_Preset == PresetType::V2_Camber_Thickness)
     {
@@ -289,6 +524,10 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         // 4. Max Thickness Position
         delta = 0.1;
         m_Variable.emplace_back("XThickness", std::max(0.1, m_BaseXThickness - delta), std::min(0.9, m_BaseXThickness + delta));
+
+        LeMetrics baseMetrics;
+        if(computeLeMetrics(*m_pFoil, baseMetrics))
+            applyMetrics(baseMetrics);
         return; 
     }
 
@@ -398,6 +637,18 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[mid]), y - delta, y + delta);
         m_VarToBase.push_back(mid);
     }
+
+    if(!m_OptimBaseNodes.empty())
+    {
+        Foil baseFoil;
+        baseFoil.setBaseNodes(m_OptimBaseNodes);
+        if(baseFoil.initGeometry())
+        {
+            LeMetrics baseMetrics;
+            if(computeLeMetrics(baseFoil, baseMetrics))
+                applyMetrics(baseMetrics);
+        }
+    }
 }
 
 void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) const
@@ -452,7 +703,13 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     if(!workFoil.initGeometry())
         return;
 
-    if(!isFoilGeometryValid(workFoil))
+    if(!isFoilGeometryValid(workFoil,
+                            m_BaseLERadius,
+                            m_BaseMaxLECurvature,
+                            m_BaseMaxLETurnAngle,
+                            m_BaseHasMonotonicLE,
+                            m_BaseHasPositiveThicknessLE,
+                            m_BaseHasSelfIntersection))
         return;
 
     if (m_Constraints.enabled)

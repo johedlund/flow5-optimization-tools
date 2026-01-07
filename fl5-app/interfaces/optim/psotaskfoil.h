@@ -146,4 +146,10 @@ class PSOTaskFoil : public PSOTask
         double m_BaseMaxThickness{0.0};
         double m_BaseXCamber{0.0};
         double m_BaseXThickness{0.0};
+        double m_BaseLERadius{0.0};
+        double m_BaseMaxLECurvature{0.0};
+        double m_BaseMaxLETurnAngle{0.0};
+        bool m_BaseHasMonotonicLE{false};
+        bool m_BaseHasPositiveThicknessLE{false};
+        bool m_BaseHasSelfIntersection{false};
 };
