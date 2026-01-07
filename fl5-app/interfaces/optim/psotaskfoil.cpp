@@ -301,14 +301,26 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 
     const int nOptim = int(m_OptimBaseNodes.size());
     m_Variable.reserve(nOptim);
+    const double yLE = m_OptimBaseNodes[leOptimIndex].y;
+
     for(int i=0; i<nOptim; ++i)
     {
         if(i == 0 || i == nOptim-1 || i == leOptimIndex)
             continue;
 
         const double y = m_OptimBaseNodes[i].y;
-        const double minY = y - delta;
-        const double maxY = y + delta;
+        double minY = y - delta;
+        double maxY = y + delta;
+
+        // Constraint: Prevent crossover at Leading Edge
+        // If point is originally above LE, keep it above (Top Surface)
+        // If point is originally below LE, keep it below (Bottom Surface)
+        // This prevents the "loop" artifact near LE when delta is large relative to local thickness
+        if (y >= yLE) {
+            minY = std::max(minY, yLE + 1.0e-6);
+        } else {
+            maxY = std::min(maxY, yLE - 1.0e-6);
+        }
 
         m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
         m_VarToBase.push_back(i);
@@ -487,25 +499,31 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     workPolar.reset();
     workPolar.setFoilName(workFoil.name());
 
-    XFoilTask task;
+    // Allocate XFoilTask on heap to prevent stack overflow (XFoil has large arrays)
+    // and ensure thread safety regarding stack size limits.
+    XFoilTask *task = new XFoilTask();
     XFoilTask::setCancelled(false);
 
     bool useAlpha = true;
     double target = 0.0;
-    if(!resolveTarget(useAlpha, target))
+    if(!resolveTarget(useAlpha, target)) {
+        delete task;
         return;
+    }
 
-    task.setAoAAnalysis(useAlpha);
-    task.clearRanges();
-    task.appendRange({true, target, target, 0.0});
+    task->setAoAAnalysis(useAlpha);
+    task->clearRanges();
+    task->appendRange({true, target, target, 0.0});
 
-    if(!task.initialize(workFoil, &workPolar, true))
+    if(!task->initialize(workFoil, &workPolar, true)) {
+        delete task;
         return;
+    }
 
-    task.run();
+    task->run();
 
-    const std::vector<OpPoint*> &opps = task.operatingPoints();
-    if(!opps.empty() && !task.hasErrors())
+    const std::vector<OpPoint*> &opps = task->operatingPoints();
+    if(!opps.empty() && !task->hasErrors())
     {
         const OpPoint *pOpp = opps.front();
         const double cl = pOpp->m_Cl;
@@ -546,6 +564,7 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                 pParticle->setFitness(iobj, OPTIM_PENALTY + aeroPenalty);
              // Cleanup
              for(OpPoint *pOpp : opps) delete pOpp;
+             delete task;
              return;
         }
 
@@ -598,6 +617,8 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
 
     for(OpPoint *pOpp : opps)
         delete pOpp;
+
+    delete task;
 
     if(bTrace) postParticleEvent();
 }

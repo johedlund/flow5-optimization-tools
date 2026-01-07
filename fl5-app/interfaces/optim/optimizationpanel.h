@@ -100,6 +100,7 @@ private:
     QDoubleSpinBox *m_sbBoundsScale;
 
     // Run Parameters
+    QSpinBox *m_sbMaxIter;
     QDoubleSpinBox *m_sbReynolds;
     QDoubleSpinBox *m_sbMach;
     QDoubleSpinBox *m_sbNCrit;

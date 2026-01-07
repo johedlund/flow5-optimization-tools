@@ -213,6 +213,12 @@ void OptimizationPanel::setupUI()
     auto *runGroup = new QGroupBox("Run Parameters", inspectorWidget);
     auto *runLayout = new QFormLayout(runGroup);
     
+    m_sbMaxIter = new QSpinBox(this);
+    m_sbMaxIter->setRange(1, 1000);
+    m_sbMaxIter->setValue(PSOTask::s_MaxIter);
+    m_sbMaxIter->setSuffix(" iters");
+    runLayout->addRow("Max Iterations:", m_sbMaxIter);
+
     m_sbReynolds = new QDoubleSpinBox(this);
     m_sbReynolds->setRange(0.01, 100.0);
     m_sbReynolds->setValue(1.0);
@@ -385,6 +391,8 @@ void OptimizationPanel::onRun()
     m_pTask->setMach(m_sbMach->value());
     m_pTask->setNCrit(m_sbNCrit->value());
 
+    PSOTask::s_MaxIter = m_sbMaxIter->value();
+
     PSOTaskFoil::PresetType preset = static_cast<PSOTaskFoil::PresetType>(m_PresetCombo->currentData().toInt());
     m_pTask->setPreset(preset);
 
@@ -399,6 +407,24 @@ void OptimizationPanel::onRun()
         QMessageBox::warning(this, "Error", "Foil has no optimizable variables.");
         return;
     }
+
+    // Validate Constraints
+    auto checkMinMax = [&](QCheckBox* minChk, QDoubleSpinBox* minSb, 
+                           QCheckBox* maxChk, QDoubleSpinBox* maxSb, const QString& name) -> bool {
+        if(minChk->isChecked() && maxChk->isChecked() && minSb->value() > maxSb->value()) {
+            QMessageBox::warning(this, "Input Error", QString("Min %1 cannot be greater than Max %1.").arg(name));
+            return false;
+        }
+        return true;
+    };
+
+    if(!checkMinMax(m_chkMinThickness, m_sbMinThickness, m_chkMaxThickness, m_sbMaxThickness, "Thickness")) return;
+    if(!checkMinMax(m_chkMinCamber, m_sbMinCamber, m_chkMaxCamber, m_sbMaxCamber, "Camber")) return;
+    if(!checkMinMax(m_chkMinXCamber, m_sbMinXCamber, m_chkMaxXCamber, m_sbMaxXCamber, "XCamber")) return;
+    if(!checkMinMax(m_chkMinXThickness, m_sbMinXThickness, m_chkMaxXThickness, m_sbMaxXThickness, "XThickness")) return;
+    if(!checkMinMax(m_chkMinCl, m_sbMinCl, m_chkMaxCl, m_sbMaxCl, "Cl")) return;
+    if(!checkMinMax(m_chkMinCd, m_sbMinCd, m_chkMaxCd, m_sbMaxCd, "Cd")) return;
+    if(!checkMinMax(m_chkMinCm, m_sbMinCm, m_chkMaxCm, m_sbMaxCm, "Cm")) return;
 
     // Configure Objectives
     m_pTask->setNObjectives(1);
