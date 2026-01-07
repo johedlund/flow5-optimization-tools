@@ -302,19 +302,38 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     const int nOptim = int(m_OptimBaseNodes.size());
     m_Variable.reserve(nOptim);
     const double yLE = m_OptimBaseNodes[leOptimIndex].y;
+    const double xLE = m_OptimBaseNodes[leOptimIndex].x;
+    
+    // Estimate chord
+    double minX_coords = m_OptimBaseNodes.front().x;
+    double maxX_coords = m_OptimBaseNodes.back().x;
+    for(const auto& n : m_OptimBaseNodes) {
+        if(n.x < minX_coords) minX_coords = n.x;
+        if(n.x > maxX_coords) maxX_coords = n.x;
+    }
+    double chord = maxX_coords - minX_coords;
+    if(chord < 1.0e-3) chord = 1.0;
 
     for(int i=0; i<nOptim; ++i)
     {
-        // Freeze LE and immediate neighbors to preserve nose curvature and prevent artifacts
-        if(i == 0 || i == nOptim-1 || 
-           i == leOptimIndex || 
-           i == leOptimIndex - 1 || 
-           i == leOptimIndex + 1)
+        // Only freeze exact LE (and TE)
+        // We relax the neighbor freezing to allow smooth curvature via tapering
+        if(i == 0 || i == nOptim-1 || i == leOptimIndex)
             continue;
 
         const double y = m_OptimBaseNodes[i].y;
-        double minY = y - delta;
-        double maxY = y + delta;
+        const double x = m_OptimBaseNodes[i].x;
+        
+        // Taper delta near LE to prevent kinks ("glued nose") and tangles
+        // Linearly scale allowed movement from 0 at LE to 100% at 15% chord
+        double dist = std::abs(x - xLE);
+        double taperRegion = 0.15 * chord; 
+        double factor = (dist < taperRegion) ? (dist / taperRegion) : 1.0;
+        
+        double localDelta = delta * factor;
+
+        double minY = y - localDelta;
+        double maxY = y + localDelta;
 
         // Constraint: Prevent crossover at Leading Edge level for remaining points
         // This prevents points further back from crossing the nose line and causing tangles
