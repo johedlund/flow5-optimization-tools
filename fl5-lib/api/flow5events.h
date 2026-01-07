@@ -39,6 +39,7 @@ const QEvent::Type OPTIM_ITER_EVENT          = static_cast<QEvent::Type>(QEvent:
 const QEvent::Type OPTIM_END_EVENT           = static_cast<QEvent::Type>(QEvent::User + 109);
 const QEvent::Type OPTIM_PARTICLE_EVENT      = static_cast<QEvent::Type>(QEvent::User + 110);
 const QEvent::Type OPTIM_MAKESWARM_EVENT     = static_cast<QEvent::Type>(QEvent::User + 111);
+const QEvent::Type OPTIM_SWARM_PROGRESS_EVENT = static_cast<QEvent::Type>(QEvent::User + 112);
 const QEvent::Type MESH_UPDATE_EVENT         = static_cast<QEvent::Type>(QEvent::User + 113);
 const QEvent::Type MESH2D_UPDATE_EVENT       = static_cast<QEvent::Type>(QEvent::User + 114);
 const QEvent::Type LLT_OPP_EVENT             = static_cast<QEvent::Type>(QEvent::User + 115);

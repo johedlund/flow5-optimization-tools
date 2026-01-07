@@ -144,4 +144,6 @@ private:
     FoilWt *m_pSectionView;
     Foil *m_pGhostFoil{nullptr};
     Foil *m_pPreviewFoil{nullptr};
+
+    int m_OldIterLimit = 100;
 };

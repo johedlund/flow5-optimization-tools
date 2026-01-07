@@ -176,6 +176,12 @@ void PSOTask::onMakeParticleSwarm()
         for(int i=0; i<m_Swarm.size(); i++)
         {
             calcFitness(&m_Swarm[i], false, true);
+            
+            if(m_pParent) {
+                 OptimEvent *pEvent = new OptimEvent(OPTIM_SWARM_PROGRESS_EVENT, i + 1, m_Swarm.size(), m_Swarm[i]);
+                 qApp->postEvent(m_pParent, pEvent);
+            }
+
             if(isCancelled()) break;
             QCoreApplication::processEvents();
         }

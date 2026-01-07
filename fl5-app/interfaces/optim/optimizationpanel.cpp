@@ -46,6 +46,7 @@
 
 #include <api/foil.h>
 #include <api/polar.h>
+#include <api/xfoiltask.h>
 #include <interfaces/optim/psotaskfoil.h>
 #include <interfaces/optim/psotask.h>
 #include <interfaces/graphs/containers/graphwt.h>
@@ -63,6 +64,10 @@ OptimizationPanel::OptimizationPanel(QWidget *pParent)
 
 OptimizationPanel::~OptimizationPanel()
 {
+    // Ensure we restore global state if panel is closed during run
+    if(m_OldIterLimit != XFoilTask::maxIterations())
+        XFoilTask::setMaxIterations(m_OldIterLimit);
+
     if(m_pGraph) delete m_pGraph;
     if(m_pCurveModel) delete m_pCurveModel;
     clearPreviewFoils();
@@ -402,6 +407,8 @@ void OptimizationPanel::onRun()
     PSOTaskFoil::ObjectiveType objType = static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
     m_pTask->setObjectiveType(objType);
 
+    m_BestValid = false;
+
     // Configure Target
     PSOTaskFoil::TargetMode targetMode = static_cast<PSOTaskFoil::TargetMode>(m_TargetModeCombo->currentData().toInt());
     double targetVal = m_TargetValueSpin->value();
@@ -480,6 +487,10 @@ void OptimizationPanel::onRun()
     m_RunActive = true;
     QCoreApplication::processEvents();
 
+    // Reduce XFoil max iterations for optimization to avoid long hangs on bad particles
+    m_OldIterLimit = XFoilTask::maxIterations();
+    XFoilTask::setMaxIterations(30);
+
     m_pTask->onMakeParticleSwarm();
     m_pTask->onStartIterations();
     
@@ -506,11 +517,18 @@ void OptimizationPanel::onApplyBest()
         m_StatusLabel->setText("Foil created: " + QString::fromStdString(pNewFoil->name()));
         log("Foil created: " + QString::fromStdString(pNewFoil->name()));
     }
+    else
+    {
+        QMessageBox::critical(this, "Error", "Failed to create optimized foil geometry.\nThe particle parameters may have resulted in an invalid shape.");
+        log("Error: Failed to create optimized foil geometry.");
+    }
 }
 
 void OptimizationPanel::onTaskFinished()
 {
     m_RunActive = false;
+    XFoilTask::setMaxIterations(m_OldIterLimit);
+
     if(m_pTask && m_pTask->isFinished()) return;
     updateUI(false);
 }
@@ -526,7 +544,16 @@ void OptimizationPanel::updateUI(bool isRunning)
 
 void OptimizationPanel::customEvent(QEvent *event)
 {
-    if(event->type() == OPTIM_MAKESWARM_EVENT)
+    if(event->type() == OPTIM_SWARM_PROGRESS_EVENT)
+    {
+        OptimEvent *pEvent = static_cast<OptimEvent*>(event);
+        if(pEvent) {
+             m_ProgressBar->setRange(0, pEvent->iBest()); 
+             m_ProgressBar->setValue(pEvent->iter()); 
+             m_StatusLabel->setText(QString("Building Swarm %1/%2").arg(pEvent->iter()).arg(pEvent->iBest()));
+        }
+    }
+    else if(event->type() == OPTIM_MAKESWARM_EVENT)
     {
         log("Swarm initialized.");
         m_ProgressBar->setRange(0, PSOTask::s_MaxIter);
@@ -550,16 +577,35 @@ void OptimizationPanel::customEvent(QEvent *event)
     }
     else if(event->type() == OPTIM_END_EVENT)
     {
-        m_StatusLabel->setText("Optimization finished.");
-        log("Optimization finished.");
         m_ProgressBar->setValue(PSOTask::s_MaxIter);
-        
+
         OptimEvent *pEvent = static_cast<OptimEvent*>(event);
         if(pEvent && m_pTask) {
              m_BestParticle = pEvent->particle();
              m_BestValid = m_BestParticle.isConverged();
              log(QString("Best Fitness: %1").arg(m_BestParticle.fitness(0)));
              updateCandidatePreview(m_BestParticle);
+
+             if(m_BestValid) {
+                 m_StatusLabel->setText("Optimization finished.");
+                 log("Optimization finished. Apply to use the best result.");
+                 
+                 QString summary = QString("Optimization completed successfully.\n\n"
+                                           "Iterations: %1\n"
+                                           "Best Fitness: %2\n\n"
+                                           "Click 'Apply' to create the optimized foil.")
+                                           .arg(PSOTask::s_MaxIter)
+                                           .arg(m_BestParticle.fitness(0), 0, 'g', 6);
+                 QMessageBox::information(this, "Optimization Results", summary);
+
+             } else {
+                 m_StatusLabel->setText("Optimization finished (no valid result).");
+                 log("Warning: No converged solution found. All particles may have hit constraints or XFoil failed to converge.");
+             }
+        } else {
+            m_BestValid = false;
+            m_StatusLabel->setText("Optimization ended (no result).");
+            log("Error: Optimization ended without a valid result.");
         }
         updateUI(false);
     }

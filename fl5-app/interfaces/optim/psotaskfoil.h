@@ -96,8 +96,10 @@ class PSOTaskFoil : public PSOTask
         };
 
         PSOTaskFoil();
-        void setFoil(Foil *pFoil) {m_pFoil = pFoil;}
-        void setPolar(Polar *pPolar) {m_pPolar = pPolar;}
+        ~PSOTaskFoil() override;
+
+        void setFoil(Foil *pFoil);
+        void setPolar(Polar *pPolar);
         void setConstraints(Constraints const &c) {m_Constraints = c;}
         void setOptimizationPoints(int n) {m_OptimizationPoints = n;}
         void setBoundsScale(double scale) {m_BoundsScale = scale;}

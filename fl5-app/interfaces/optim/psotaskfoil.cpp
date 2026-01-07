@@ -37,6 +37,30 @@ PSOTaskFoil::PSOTaskFoil()
 {
 }
 
+PSOTaskFoil::~PSOTaskFoil()
+{
+    if(m_pFoil) delete m_pFoil;
+    if(m_pPolar) delete m_pPolar;
+}
+
+void PSOTaskFoil::setFoil(Foil *pFoil)
+{
+    if(m_pFoil) delete m_pFoil;
+    if(pFoil)
+        m_pFoil = new Foil(pFoil);
+    else
+        m_pFoil = nullptr;
+}
+
+void PSOTaskFoil::setPolar(Polar *pPolar)
+{
+    if(m_pPolar) delete m_pPolar;
+    if(pPolar)
+        m_pPolar = new Polar(*pPolar);
+    else
+        m_pPolar = nullptr;
+}
+
 int PSOTaskFoil::variableBaseIndex(int varIndex) const
 {
     if(varIndex < 0 || varIndex >= int(m_VarToBase.size()))
