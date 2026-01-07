@@ -213,10 +213,38 @@ int main(int argc, char **argv)
     std::cout << "  Result: " << (unconvergedOk ? "PASS" : "FAIL") << "\n";
 
     // 5. CANCELLATION PATH
-    // Temporarily disabled due to threading complexity in headless test environment
     std::cout << "Test 5: Cancellation Path\n";
-    std::cout << "  SKIPPED (threading test - needs GUI event loop)\n";
-    const bool cancelOk = true; // Skip for now
+
+    PSOTask::s_PopSize = 6;
+    PSOTask::s_MaxIter = 200;
+    PSOTask::s_bMultiThreaded = false; // deterministic sequence
+
+    PSOTaskFoil cancelTask;
+    cancelTask.setFoil(pFoil);
+    cancelTask.setPolar(pPolar);
+    cancelTask.initVariablesFromFoil();
+    cancelTask.setTargetAlpha(pPolar->aoaSpec());
+    cancelTask.setNObjectives(1);
+    cancelTask.setObjective(0, OptObjective("Cl", 0, true, 0.0, 0.0, xfl::EQUALIZE));
+
+    cancelTask.onMakeParticleSwarm();
+
+    std::thread cancelThread([&cancelTask]()
+    {
+        cancelTask.onStartIterations();
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const bool finishedEarly = cancelTask.isFinished();
+    cancelTask.cancelAnalyis();
+    const bool cancelObserved = cancelTask.isCancelled();
+    cancelThread.join();
+
+    const bool cancelOk = !finishedEarly && cancelTask.isFinished() && cancelObserved;
+    std::cout << "  Finished before cancel: " << (finishedEarly ? "true" : "false") << "\n";
+    std::cout << "  Cancel flag observed: " << (cancelObserved ? "true" : "false") << "\n";
+    std::cout << "  Status: " << (cancelTask.isFinished() ? "FINISHED" : "RUNNING/PENDING") << "\n";
+    std::cout << "  Result: " << (cancelOk ? "PASS" : "FAIL") << "\n";
 
     // 6. V2 PRESET HANDLING
     std::cout << "Test 6: V2 Preset Handling\n";
