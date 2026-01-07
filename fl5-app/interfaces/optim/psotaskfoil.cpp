@@ -28,10 +28,84 @@
 #include <api/oppoint.h>
 #include <api/polar.h>
 #include <api/xfoiltask.h>
+#include <geom_global.h>
 
 #include <algorithm>
 #include <cmath>
 #include <string>
+
+namespace {
+
+bool isMonotonicXAboutLE(const std::vector<Node2d> &pts, double eps)
+{
+    const int n = static_cast<int>(pts.size());
+    if(n < 3)
+        return true;
+
+    int leIndex = 0;
+    double minX = pts[0].x;
+    for(int i=1; i<n; ++i)
+    {
+        if(pts[i].x < minX)
+        {
+            minX = pts[i].x;
+            leIndex = i;
+        }
+    }
+
+    for(int i=1; i<=leIndex; ++i)
+    {
+        if(pts[i].x > pts[i-1].x + eps)
+            return false;
+    }
+
+    for(int i=leIndex+1; i<n; ++i)
+    {
+        if(pts[i].x + eps < pts[i-1].x)
+            return false;
+    }
+
+    return true;
+}
+
+bool hasSelfIntersection(const std::vector<Node2d> &pts)
+{
+    const int n = static_cast<int>(pts.size());
+    if(n < 4)
+        return false;
+
+    Vector2d ip;
+    constexpr double precision = 1.0e-7;
+    for(int i=0; i<n-1; ++i)
+    {
+        for(int j=i+2; j<n-1; ++j)
+        {
+            if(geom::intersectSegment(pts[i], pts[i+1], pts[j], pts[j+1], ip, false, precision))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool isFoilGeometryValid(const Foil &foil)
+{
+    if(foil.TEGap() < 0.0)
+        return false;
+
+    const std::vector<Node2d> &pts = foil.cubicSpline().outputPts();
+    if(pts.size() < 4)
+        return true;
+
+    if(!isMonotonicXAboutLE(pts, 1.0e-6))
+        return false;
+
+    if(hasSelfIntersection(pts))
+        return false;
+
+    return true;
+}
+
+} // namespace
 
 PSOTaskFoil::PSOTaskFoil()
 {
@@ -376,6 +450,9 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     }
 
     if(!workFoil.initGeometry())
+        return;
+
+    if(!isFoilGeometryValid(workFoil))
         return;
 
     if (m_Constraints.enabled)

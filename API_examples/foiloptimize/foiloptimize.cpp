@@ -139,9 +139,8 @@ int main(int argc, char **argv)
     base->calcFitness(&sadParticle, false, false);
     const double sadFitness = sadParticle.fitness(0);
     
-    // Expect: either penalty for invalid geometry or finite fitness if it still converged.
-    const bool sadOk = (!sadParticle.isConverged() && sadFitness == OPTIM_PENALTY)
-                    || (sadParticle.isConverged() && isFinite(sadFitness));
+    // Expect: penalty for invalid geometry (self-intersection or non-monotonic nose).
+    const bool sadOk = (!sadParticle.isConverged() && sadFitness == OPTIM_PENALTY);
 
     std::cout << "  Converged: " << (sadParticle.isConverged() ? "true" : "false") << "\n";
     std::cout << "  Fitness: " << sadFitness << " (Penalty: " << OPTIM_PENALTY << ")\n";
