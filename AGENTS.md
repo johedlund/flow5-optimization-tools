@@ -1,5 +1,18 @@
 # Repository Guidelines
 
+## Agent Git Identity
+
+To track contributions by agent, configure git user/email at the start of your session:
+
+- **Gemini:**
+  `git config user.name "Gemini Agent" && git config user.email "gemini@agent.flow5"`
+- **Claude:**
+  `git config user.name "Claude Agent" && git config user.email "claude@agent.flow5"`
+- **Codex:**
+  `git config user.name "Codex Agent" && git config user.email "codex@agent.flow5"`
+
+**Instruction:** Run the appropriate config command immediately upon starting a session.
+
 ## Issue Tracking
 
 This project uses **bd (beads)** for issue tracking.
