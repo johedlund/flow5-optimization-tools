@@ -591,7 +591,6 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
 
         for(int iobj=0; iobj<pParticle->nObjectives(); ++iobj)
         {
-            OptObjective const &obj = m_Objective.at(iobj);
             double val = OPTIM_PENALTY;
 
             switch(m_ObjectiveType)
