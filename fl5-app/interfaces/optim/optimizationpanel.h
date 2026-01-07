@@ -117,6 +117,24 @@ private:
     QCheckBox *m_chkMaxWiggliness;QDoubleSpinBox *m_sbMaxWiggliness;
     QCheckBox *m_chkMinModulus;   QDoubleSpinBox *m_sbMinModulus;
 
+    // New Geometric Constraints
+    QCheckBox *m_chkMinCamber;     QDoubleSpinBox *m_sbMinCamber;
+    QCheckBox *m_chkMaxCamber;     QDoubleSpinBox *m_sbMaxCamber;
+    QCheckBox *m_chkMinXCamber;    QDoubleSpinBox *m_sbMinXCamber;
+    QCheckBox *m_chkMaxXCamber;    QDoubleSpinBox *m_sbMaxXCamber;
+    QCheckBox *m_chkMinXThickness; QDoubleSpinBox *m_sbMinXThickness;
+    QCheckBox *m_chkMaxXThickness; QDoubleSpinBox *m_sbMaxXThickness;
+    QCheckBox *m_chkMinArea;       QDoubleSpinBox *m_sbMinArea;
+
+    // Aerodynamic Constraints
+    QCheckBox *m_chkMinCl; QDoubleSpinBox *m_sbMinCl;
+    QCheckBox *m_chkMaxCl; QDoubleSpinBox *m_sbMaxCl;
+    QCheckBox *m_chkMinCd; QDoubleSpinBox *m_sbMinCd;
+    QCheckBox *m_chkMaxCd; QDoubleSpinBox *m_sbMaxCd;
+    QCheckBox *m_chkMinCm; QDoubleSpinBox *m_sbMinCm;
+    QCheckBox *m_chkMaxCm; QDoubleSpinBox *m_sbMaxCm;
+    QCheckBox *m_chkMinLD; QDoubleSpinBox *m_sbMinLD;
+
     // Visualization
     GraphWt *m_pGraphWt;
     Graph *m_pGraph;

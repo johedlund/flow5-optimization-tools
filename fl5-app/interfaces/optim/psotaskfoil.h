@@ -50,7 +50,13 @@ class PSOTaskFoil : public PSOTask
         enum class ObjectiveType
         {
             MinimizeCd,
-            MaximizeLD
+            MaximizeLD,
+            MaximizeCl,
+            MinimizeCm,
+            TargetCl,
+            TargetCm,
+            MaximizePowerFactor, // Cl^1.5 / Cd
+            MaximizeEnduranceFactor // Cl^3 / Cd^2
         };
 
         struct ConstraintVal
@@ -61,12 +67,30 @@ class PSOTaskFoil : public PSOTask
 
         struct Constraints
         {
+            // Geometric
             ConstraintVal minThickness;
             ConstraintVal maxThickness;
             ConstraintVal minLERadius;
             ConstraintVal minTEThickness;
             ConstraintVal maxWiggliness;
             ConstraintVal minSectionModulus;
+
+            ConstraintVal minCamber;
+            ConstraintVal maxCamber;
+            ConstraintVal minXCamber;
+            ConstraintVal maxXCamber;
+            ConstraintVal minXThickness;
+            ConstraintVal maxXThickness;
+            ConstraintVal minArea; // Cross-sectional area
+
+            // Aerodynamic
+            ConstraintVal minCl;
+            ConstraintVal maxCl;
+            ConstraintVal minCd;
+            ConstraintVal maxCd;
+            ConstraintVal minCm;
+            ConstraintVal maxCm;
+            ConstraintVal minLD;
             
             bool enabled{false};
         };

@@ -395,6 +395,54 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                 penalty += std::pow(m_Constraints.minSectionModulus.value - s, 2) * 100000.0;
         }
 
+        // New Geometric Constraints
+        if (m_Constraints.minCamber.enabled) {
+            double c = workFoil.maxCamber();
+            if (c < m_Constraints.minCamber.value)
+                penalty += std::pow(m_Constraints.minCamber.value - c, 2) * 1000.0;
+        }
+        if (m_Constraints.maxCamber.enabled) {
+            double c = workFoil.maxCamber();
+            if (c > m_Constraints.maxCamber.value)
+                penalty += std::pow(c - m_Constraints.maxCamber.value, 2) * 1000.0;
+        }
+
+        if (m_Constraints.minXCamber.enabled) {
+            double xc = workFoil.xCamber();
+            if (xc < m_Constraints.minXCamber.value)
+                penalty += std::pow(m_Constraints.minXCamber.value - xc, 2) * 1000.0;
+        }
+        if (m_Constraints.maxXCamber.enabled) {
+            double xc = workFoil.xCamber();
+            if (xc > m_Constraints.maxXCamber.value)
+                penalty += std::pow(xc - m_Constraints.maxXCamber.value, 2) * 1000.0;
+        }
+
+        if (m_Constraints.minXThickness.enabled) {
+            double xt = workFoil.xThickness();
+            if (xt < m_Constraints.minXThickness.value)
+                penalty += std::pow(m_Constraints.minXThickness.value - xt, 2) * 1000.0;
+        }
+        if (m_Constraints.maxXThickness.enabled) {
+            double xt = workFoil.xThickness();
+            if (xt > m_Constraints.maxXThickness.value)
+                penalty += std::pow(xt - m_Constraints.maxXThickness.value, 2) * 1000.0;
+        }
+
+        if (m_Constraints.minArea.enabled) {
+            // Approximate area or use precise calculation if available
+            // For now, let's assume we can compute it from the polygon
+            double area = 0.0;
+            const int n = workFoil.nBaseNodes(); // Using base nodes for speed
+            for(int i=0; i<n-1; ++i) {
+                area += (workFoil.xb(i) * workFoil.yb(i+1) - workFoil.xb(i+1) * workFoil.yb(i));
+            }
+            area = std::fabs(0.5 * area); // Polygon area
+            
+            if (area < m_Constraints.minArea.value)
+                penalty += std::pow(m_Constraints.minArea.value - area, 2) * 10000.0;
+        }
+
         if (penalty > 0.0) {
             // Apply penalty to all objectives
             for(int i=0; i<pParticle->nObjectives(); ++i)
@@ -444,6 +492,39 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         if (!std::isfinite(cl) || !std::isfinite(cd) || !std::isfinite(cm))
             return; // Leave as penalty
 
+        // Check Aerodynamic Constraints
+        double aeroPenalty = 0.0;
+        if (m_Constraints.enabled)
+        {
+            if (m_Constraints.minCl.enabled && cl < m_Constraints.minCl.value)
+                aeroPenalty += std::pow(m_Constraints.minCl.value - cl, 2) * 1000.0;
+            if (m_Constraints.maxCl.enabled && cl > m_Constraints.maxCl.value)
+                aeroPenalty += std::pow(cl - m_Constraints.maxCl.value, 2) * 1000.0;
+
+            if (m_Constraints.minCd.enabled && cd < m_Constraints.minCd.value)
+                aeroPenalty += std::pow(m_Constraints.minCd.value - cd, 2) * 10000.0;
+            if (m_Constraints.maxCd.enabled && cd > m_Constraints.maxCd.value)
+                aeroPenalty += std::pow(cd - m_Constraints.maxCd.value, 2) * 10000.0;
+
+            if (m_Constraints.minCm.enabled && cm < m_Constraints.minCm.value)
+                aeroPenalty += std::pow(m_Constraints.minCm.value - cm, 2) * 1000.0;
+            if (m_Constraints.maxCm.enabled && cm > m_Constraints.maxCm.value)
+                aeroPenalty += std::pow(cm - m_Constraints.maxCm.value, 2) * 1000.0;
+
+            double ld = (std::abs(cd) > 1.0e-9) ? cl/cd : 0.0;
+            if (m_Constraints.minLD.enabled && ld < m_Constraints.minLD.value)
+                aeroPenalty += std::pow(m_Constraints.minLD.value - ld, 2) * 10.0;
+        }
+
+        if (aeroPenalty > 0.0)
+        {
+             for(int iobj=0; iobj<pParticle->nObjectives(); ++iobj)
+                pParticle->setFitness(iobj, OPTIM_PENALTY + aeroPenalty);
+             // Cleanup
+             for(OpPoint *pOpp : opps) delete pOpp;
+             return;
+        }
+
         for(int iobj=0; iobj<pParticle->nObjectives(); ++iobj)
         {
             OptObjective const &obj = m_Objective.at(iobj);
@@ -456,6 +537,30 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                     break;
                 case ObjectiveType::MaximizeLD:
                     val = (cd > 1.0e-9) ? cl/cd : -OPTIM_PENALTY; // Return -penalty if invalid L/D
+                    break;
+                case ObjectiveType::MaximizeCl:
+                    val = -cl; // Minimizer expects lower is better, so negate maximization targets
+                    break;
+                case ObjectiveType::MinimizeCm:
+                    val = std::abs(cm);
+                    break;
+                case ObjectiveType::TargetCl:
+                    val = std::abs(cl - m_TargetValue);
+                    break;
+                case ObjectiveType::TargetCm:
+                    val = std::abs(cm - m_TargetValue);
+                    break;
+                case ObjectiveType::MaximizePowerFactor: // Cl^1.5 / Cd
+                    if (cl > 0.0 && cd > 1.0e-9)
+                        val = -std::pow(cl, 1.5) / cd;
+                    else
+                        val = OPTIM_PENALTY;
+                    break;
+                case ObjectiveType::MaximizeEnduranceFactor: // Cl^3 / Cd^2
+                     if (cl > 0.0 && cd > 1.0e-9)
+                        val = -std::pow(cl, 3.0) / std::pow(cd, 2.0);
+                    else
+                        val = OPTIM_PENALTY;
                     break;
             }
             

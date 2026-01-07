@@ -84,6 +84,22 @@ void OptimizationPanel::initPanel(Foil *pFoil, Polar *pPolar)
         m_sbMinTEGap->setValue(m_pFoil->TEGap());
         m_sbMaxWiggliness->setValue(m_pFoil->wiggliness());
         
+        m_sbMinCamber->setValue(m_pFoil->maxCamber());
+        m_sbMaxCamber->setValue(m_pFoil->maxCamber());
+        m_sbMinXCamber->setValue(m_pFoil->xCamber());
+        m_sbMaxXCamber->setValue(m_pFoil->xCamber());
+        m_sbMinXThickness->setValue(m_pFoil->xThickness());
+        m_sbMaxXThickness->setValue(m_pFoil->xThickness());
+        
+        // Approx area
+        double area = 0.0;
+        const int n = m_pFoil->nBaseNodes();
+        for(int i=0; i<n-1; ++i) {
+            area += (m_pFoil->xb(i) * m_pFoil->yb(i+1) - m_pFoil->xb(i+1) * m_pFoil->yb(i));
+        }
+        area = std::fabs(0.5 * area);
+        m_sbMinArea->setValue(area);
+
         double t = m_pFoil->maxThickness();
         m_sbMinModulus->setValue(0.12 * t * t);
         
@@ -223,6 +239,12 @@ void OptimizationPanel::setupUI()
     m_ObjectiveCombo = new QComboBox(this);
     m_ObjectiveCombo->addItem("Minimize Cd", static_cast<int>(PSOTaskFoil::ObjectiveType::MinimizeCd));
     m_ObjectiveCombo->addItem("Maximize L/D", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeLD));
+    m_ObjectiveCombo->addItem("Maximize Cl", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeCl));
+    m_ObjectiveCombo->addItem("Minimize Cm", static_cast<int>(PSOTaskFoil::ObjectiveType::MinimizeCm));
+    m_ObjectiveCombo->addItem("Target Cl", static_cast<int>(PSOTaskFoil::ObjectiveType::TargetCl));
+    m_ObjectiveCombo->addItem("Target Cm", static_cast<int>(PSOTaskFoil::ObjectiveType::TargetCm));
+    m_ObjectiveCombo->addItem("Max Power Factor", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizePowerFactor));
+    m_ObjectiveCombo->addItem("Max Endurance Factor", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeEnduranceFactor));
     
     m_TargetModeCombo = new QComboBox(this);
     m_TargetModeCombo->addItem("Fixed Alpha", static_cast<int>(PSOTaskFoil::TargetMode::Alpha));
@@ -268,6 +290,23 @@ void OptimizationPanel::setupUI()
     addConRow("Min TE Thickness", m_chkMinTEGap, m_sbMinTEGap, 0.002, 0.0005, 0.05);
     addConRow("Max Wiggliness", m_chkMaxWiggliness, m_sbMaxWiggliness, 1.0, 0.1, 100.0);
     addConRow("Min Section Modulus", m_chkMinModulus, m_sbMinModulus, 0.001, 0.0001, 0.1);
+
+    addConRow("Min Camber", m_chkMinCamber, m_sbMinCamber, 0.0, 0.001, 0.2);
+    addConRow("Max Camber", m_chkMaxCamber, m_sbMaxCamber, 0.1, 0.001, 0.2);
+    addConRow("Min X Camber", m_chkMinXCamber, m_sbMinXCamber, 0.1, 0.05, 0.9);
+    addConRow("Max X Camber", m_chkMaxXCamber, m_sbMaxXCamber, 0.5, 0.05, 0.9);
+    addConRow("Min X Thickness", m_chkMinXThickness, m_sbMinXThickness, 0.1, 0.05, 0.9);
+    addConRow("Max X Thickness", m_chkMaxXThickness, m_sbMaxXThickness, 0.5, 0.05, 0.9);
+    addConRow("Min Area", m_chkMinArea, m_sbMinArea, 0.01, 0.001, 0.5);
+
+    addConRow("Min Cl", m_chkMinCl, m_sbMinCl, 0.0, 0.1, 5.0);
+    addConRow("Max Cl", m_chkMaxCl, m_sbMaxCl, 1.5, 0.1, 5.0);
+    addConRow("Min Cd", m_chkMinCd, m_sbMinCd, 0.0, 0.0001, 0.1);
+    addConRow("Max Cd", m_chkMaxCd, m_sbMaxCd, 0.02, 0.001, 0.5);
+    addConRow("Min Cm", m_chkMinCm, m_sbMinCm, -0.5, 0.01, 0.5);
+    addConRow("Max Cm", m_chkMaxCm, m_sbMaxCm, 0.0, 0.01, 0.5);
+    addConRow("Min L/D", m_chkMinLD, m_sbMinLD, 10.0, 1.0, 200.0);
+
     inspectorLayout->addWidget(constraintsGroup);
 
     inspectorLayout->addStretch();
@@ -387,6 +426,43 @@ void OptimizationPanel::onRun()
     constraints.maxWiggliness.value = m_sbMaxWiggliness->value();
     constraints.minSectionModulus.enabled = m_chkMinModulus->isChecked();
     constraints.minSectionModulus.value = m_sbMinModulus->value();
+
+    constraints.minCamber.enabled = m_chkMinCamber->isChecked();
+    constraints.minCamber.value = m_sbMinCamber->value();
+    constraints.maxCamber.enabled = m_chkMaxCamber->isChecked();
+    constraints.maxCamber.value = m_sbMaxCamber->value();
+
+    constraints.minXCamber.enabled = m_chkMinXCamber->isChecked();
+    constraints.minXCamber.value = m_sbMinXCamber->value();
+    constraints.maxXCamber.enabled = m_chkMaxXCamber->isChecked();
+    constraints.maxXCamber.value = m_sbMaxXCamber->value();
+
+    constraints.minXThickness.enabled = m_chkMinXThickness->isChecked();
+    constraints.minXThickness.value = m_sbMinXThickness->value();
+    constraints.maxXThickness.enabled = m_chkMaxXThickness->isChecked();
+    constraints.maxXThickness.value = m_sbMaxXThickness->value();
+
+    constraints.minArea.enabled = m_chkMinArea->isChecked();
+    constraints.minArea.value = m_sbMinArea->value();
+
+    constraints.minCl.enabled = m_chkMinCl->isChecked();
+    constraints.minCl.value = m_sbMinCl->value();
+    constraints.maxCl.enabled = m_chkMaxCl->isChecked();
+    constraints.maxCl.value = m_sbMaxCl->value();
+
+    constraints.minCd.enabled = m_chkMinCd->isChecked();
+    constraints.minCd.value = m_sbMinCd->value();
+    constraints.maxCd.enabled = m_chkMaxCd->isChecked();
+    constraints.maxCd.value = m_sbMaxCd->value();
+
+    constraints.minCm.enabled = m_chkMinCm->isChecked();
+    constraints.minCm.value = m_sbMinCm->value();
+    constraints.maxCm.enabled = m_chkMaxCm->isChecked();
+    constraints.maxCm.value = m_sbMaxCm->value();
+
+    constraints.minLD.enabled = m_chkMinLD->isChecked();
+    constraints.minLD.value = m_sbMinLD->value();
+
     m_pTask->setConstraints(constraints);
 
     updateUI(true);
