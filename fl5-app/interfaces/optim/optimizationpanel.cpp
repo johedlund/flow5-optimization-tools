@@ -251,6 +251,9 @@ void OptimizationPanel::setupUI()
     m_PresetCombo = new QComboBox(this);
     m_PresetCombo->addItem("V1: Y-only base nodes", static_cast<int>(PSOTaskFoil::PresetType::V1_Y_Only));
     m_PresetCombo->addItem("V2: Camber/Thickness", static_cast<int>(PSOTaskFoil::PresetType::V2_Camber_Thickness));
+    m_PresetCombo->setToolTip("Select the parametrization method for the foil geometry.\n"
+                              "V1: Modifies Y-coordinates of base nodes.\n"
+                              "V2: Optimizes Camber and Thickness distributions directly.");
     configLayout->addRow("Preset:", m_PresetCombo);
     inspectorLayout->addWidget(configGroup);
 
@@ -261,7 +264,9 @@ void OptimizationPanel::setupUI()
     m_sbOptimPoints->setRange(6, 60);
     m_sbOptimPoints->setValue(8);
     m_sbOptimPoints->setSuffix(" pts");
-    m_sbOptimPoints->setToolTip("Control points for optimization (fewer = smoother)");
+    m_sbOptimPoints->setToolTip("Number of control points used to deform the foil.\n"
+                                "Fewer points result in smoother shapes but less flexibility.\n"
+                                "More points allow complex shapes but may introduce wiggliness.");
     geoLayout->addRow("Points:", m_sbOptimPoints);
 
     m_sbBoundsScale = new QDoubleSpinBox(this);
@@ -269,6 +274,9 @@ void OptimizationPanel::setupUI()
     m_sbBoundsScale->setValue(1.0);
     m_sbBoundsScale->setSingleStep(0.1);
     m_sbBoundsScale->setSuffix("x");
+    m_sbBoundsScale->setToolTip("Scales the search space for each variable.\n"
+                                "Values > 1.0 allow larger deformations from the original foil.\n"
+                                "Values < 1.0 constrain the optimization to the neighborhood of the original foil.");
     geoLayout->addRow("Bounds Scale:", m_sbBoundsScale);
     inspectorLayout->addWidget(geoGroup);
 
@@ -280,6 +288,8 @@ void OptimizationPanel::setupUI()
     m_sbMaxIter->setRange(1, 1000);
     m_sbMaxIter->setValue(PSOTask::s_MaxIter);
     m_sbMaxIter->setSuffix(" iters");
+    m_sbMaxIter->setToolTip("Maximum number of iterations for the Particle Swarm Optimizer.\n"
+                            "Higher values allow better convergence but take longer.");
     runLayout->addRow("Max Iterations:", m_sbMaxIter);
 
     m_sbReynolds = new QDoubleSpinBox(this);
@@ -288,18 +298,25 @@ void OptimizationPanel::setupUI()
     m_sbReynolds->setSuffix(" M");
     m_sbReynolds->setDecimals(2);
     m_sbReynolds->setSingleStep(0.1);
+    m_sbReynolds->setToolTip("Reynolds number in millions (Re = V*L/nu).\n"
+                             "Affects boundary layer transition and drag.");
     runLayout->addRow("Reynolds:", m_sbReynolds);
 
     m_sbMach = new QDoubleSpinBox(this);
     m_sbMach->setRange(0.0, 1.0);
     m_sbMach->setValue(0.0);
     m_sbMach->setSingleStep(0.05);
+    m_sbMach->setToolTip("Mach number (M = V/a).\n"
+                         "Compressibility effects are considered if M > 0.3.");
     runLayout->addRow("Mach:", m_sbMach);
 
     m_sbNCrit = new QDoubleSpinBox(this);
     m_sbNCrit->setRange(0.0, 20.0);  // NCrit=0 forces transition at LE
     m_sbNCrit->setValue(9.0);
     m_sbNCrit->setSingleStep(0.5);
+    m_sbNCrit->setToolTip("Critical amplification factor for transition prediction.\n"
+                          "9.0: Standard wind tunnel / smooth air.\n"
+                          "~0: Fully turbulent flow.");
     runLayout->addRow("NCrit:", m_sbNCrit);
     
     inspectorLayout->addWidget(runGroup);
@@ -319,14 +336,19 @@ void OptimizationPanel::setupUI()
     m_ObjectiveCombo->addItem("Target Cm", static_cast<int>(PSOTaskFoil::ObjectiveType::TargetCm));
     m_ObjectiveCombo->addItem("Max Power Factor", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizePowerFactor));
     m_ObjectiveCombo->addItem("Max Endurance Factor", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeEnduranceFactor));
+    m_ObjectiveCombo->setToolTip("The primary goal of the optimization.");
     
     m_TargetModeCombo = new QComboBox(this);
     m_TargetModeCombo->addItem("Fixed Alpha", static_cast<int>(PSOTaskFoil::TargetMode::Alpha));
     m_TargetModeCombo->addItem("Fixed CL", static_cast<int>(PSOTaskFoil::TargetMode::Cl));
+    m_TargetModeCombo->setToolTip("Defines the operating condition constraint.\n"
+                                  "Fixed Alpha: Optimize at a constant Angle of Attack.\n"
+                                  "Fixed CL: Optimize at a constant Lift Coefficient (alpha varies).");
 
     m_TargetValueSpin = new QDoubleSpinBox(this);
     m_TargetValueSpin->setRange(-20, 20); 
     m_TargetValueSpin->setValue(0.5);
+    m_TargetValueSpin->setToolTip("The value for the selected Target Mode (Alpha in degrees or CL).");
 
     objLayout->addWidget(m_ObjectiveCombo, 1, 0);
     objLayout->addWidget(m_TargetModeCombo, 1, 1);
@@ -342,44 +364,74 @@ void OptimizationPanel::setupUI()
     conLayout->addWidget(new QLabel("Limit"), 0, 2);
 
     int row = 1;
-    auto addConRow = [&](QString name, QCheckBox*& chk, QDoubleSpinBox*& sb, double val, double step, double max) {
+    auto addConRow = [&](QString name, QCheckBox*& chk, QDoubleSpinBox*& sb, double val, double step, double max, QString tooltip) {
         chk = new QCheckBox(this); 
+        chk->setToolTip(tooltip);
         sb = new QDoubleSpinBox(this);
         sb->setRange(0, max);
         sb->setValue(val);
         sb->setSingleStep(step);
         sb->setDecimals(4);
         sb->setEnabled(false);
+        sb->setToolTip(tooltip);
         connect(chk, &QCheckBox::toggled, sb, &QDoubleSpinBox::setEnabled);
         
-        conLayout->addWidget(new QLabel(name), row, 0);
+        QLabel* label = new QLabel(name);
+        label->setToolTip(tooltip);
+        conLayout->addWidget(label, row, 0);
         conLayout->addWidget(chk, row, 1);
         conLayout->addWidget(sb, row, 2);
         row++;
     };
 
-    addConRow("Min Thickness (t/c)", m_chkMinThickness, m_sbMinThickness, 0.08, 0.001, 0.5);
-    addConRow("Max Thickness (t/c)", m_chkMaxThickness, m_sbMaxThickness, 0.15, 0.001, 0.5);
-    addConRow("Min LE Radius", m_chkMinLERadius, m_sbMinLERadius, 0.01, 0.001, 0.1);
-    addConRow("Min TE Thickness", m_chkMinTEGap, m_sbMinTEGap, 0.002, 0.0005, 0.05);
-    addConRow("Max Wiggliness", m_chkMaxWiggliness, m_sbMaxWiggliness, 1.0, 0.1, 100.0);
-    addConRow("Min Section Modulus (S/c³)", m_chkMinModulus, m_sbMinModulus, 0.001, 0.0001, 100000.0);
+    addConRow("Min Thickness (t/c)", m_chkMinThickness, m_sbMinThickness, 0.08, 0.001, 0.5,
+              "Minimum maximum thickness relative to chord (t/c).");
+    addConRow("Max Thickness (t/c)", m_chkMaxThickness, m_sbMaxThickness, 0.15, 0.001, 0.5,
+              "Maximum maximum thickness relative to chord (t/c).");
+    addConRow("Min LE Radius", m_chkMinLERadius, m_sbMinLERadius, 0.01, 0.001, 0.1,
+              "Minimum Leading Edge radius relative to chord.\n"
+              "Prevents sharp leading edges that cause separation spikes.");
+    addConRow("Min TE Thickness", m_chkMinTEGap, m_sbMinTEGap, 0.002, 0.0005, 0.05,
+              "Minimum Trailing Edge thickness (gap) relative to chord.\n"
+              "Essential for structural integrity at the trailing edge.");
+    addConRow("Max Wiggliness", m_chkMaxWiggliness, m_sbMaxWiggliness, 1.0, 0.1, 100.0,
+              "Limits the variation of curvature to prevent wavy surfaces.");
+    addConRow("Min Section Modulus (S/c³)", m_chkMinModulus, m_sbMinModulus, 0.001, 0.0001, 100000.0,
+              "Minimum Section Modulus (approximated as 0.12 * t^2).\n"
+              "Proxy for spar bending strength.");
 
-    addConRow("Min Camber", m_chkMinCamber, m_sbMinCamber, 0.0, 0.001, 0.2);
-    addConRow("Max Camber", m_chkMaxCamber, m_sbMaxCamber, 0.1, 0.001, 0.2);
-    addConRow("Min X Camber", m_chkMinXCamber, m_sbMinXCamber, 0.1, 0.05, 0.9);
-    addConRow("Max X Camber", m_chkMaxXCamber, m_sbMaxXCamber, 0.5, 0.05, 0.9);
-    addConRow("Min X Thickness", m_chkMinXThickness, m_sbMinXThickness, 0.1, 0.05, 0.9);
-    addConRow("Max X Thickness", m_chkMaxXThickness, m_sbMaxXThickness, 0.5, 0.05, 0.9);
-    addConRow("Min Area", m_chkMinArea, m_sbMinArea, 0.01, 0.001, 0.5);
+    addConRow("Min Camber", m_chkMinCamber, m_sbMinCamber, 0.0, 0.001, 0.2,
+              "Minimum maximum camber relative to chord.");
+    addConRow("Max Camber", m_chkMaxCamber, m_sbMaxCamber, 0.1, 0.001, 0.2,
+              "Maximum maximum camber relative to chord.");
+    addConRow("Min X Camber", m_chkMinXCamber, m_sbMinXCamber, 0.1, 0.05, 0.9,
+              "Minimum chordwise position of maximum camber (0.0=LE, 1.0=TE).");
+    addConRow("Max X Camber", m_chkMaxXCamber, m_sbMaxXCamber, 0.5, 0.05, 0.9,
+              "Maximum chordwise position of maximum camber (0.0=LE, 1.0=TE).");
+    addConRow("Min X Thickness", m_chkMinXThickness, m_sbMinXThickness, 0.1, 0.05, 0.9,
+              "Minimum chordwise position of maximum thickness (0.0=LE, 1.0=TE).");
+    addConRow("Max X Thickness", m_chkMaxXThickness, m_sbMaxXThickness, 0.5, 0.05, 0.9,
+              "Maximum chordwise position of maximum thickness (0.0=LE, 1.0=TE).");
+    addConRow("Min Area", m_chkMinArea, m_sbMinArea, 0.01, 0.001, 0.5,
+              "Minimum cross-sectional area relative to chord^2.\n"
+              "Useful for internal volume or torsional stiffness.");
 
-    addConRow("Min Cl", m_chkMinCl, m_sbMinCl, 0.0, 0.1, 5.0);
-    addConRow("Max Cl", m_chkMaxCl, m_sbMaxCl, 1.5, 0.1, 5.0);
-    addConRow("Min Cd", m_chkMinCd, m_sbMinCd, 0.0, 0.0001, 0.1);
-    addConRow("Max Cd", m_chkMaxCd, m_sbMaxCd, 0.02, 0.001, 0.5);
-    addConRow("Min Cm", m_chkMinCm, m_sbMinCm, -0.5, 0.01, 0.5);
-    addConRow("Max Cm", m_chkMaxCm, m_sbMaxCm, 0.0, 0.01, 0.5);
-    addConRow("Min L/D", m_chkMinLD, m_sbMinLD, 10.0, 1.0, 200.0);
+    addConRow("Min Cl", m_chkMinCl, m_sbMinCl, 0.0, 0.1, 5.0,
+              "Minimum Lift Coefficient (Cl) constraint.");
+    addConRow("Max Cl", m_chkMaxCl, m_sbMaxCl, 1.5, 0.1, 5.0,
+              "Maximum Lift Coefficient (Cl) constraint.");
+    addConRow("Min Cd", m_chkMinCd, m_sbMinCd, 0.0, 0.0001, 0.1,
+              "Minimum Drag Coefficient (Cd) constraint (rarely used).");
+    addConRow("Max Cd", m_chkMaxCd, m_sbMaxCd, 0.02, 0.001, 0.5,
+              "Maximum Drag Coefficient (Cd) constraint.\n"
+              "Discard foils with drag higher than this.");
+    addConRow("Min Cm", m_chkMinCm, m_sbMinCm, -0.5, 0.01, 0.5,
+              "Minimum Pitching Moment Coefficient (Cm).\n"
+              "Usually negative; limits how nose-down the moment is.");
+    addConRow("Max Cm", m_chkMaxCm, m_sbMaxCm, 0.0, 0.01, 0.5,
+              "Maximum Pitching Moment Coefficient (Cm).");
+    addConRow("Min L/D", m_chkMinLD, m_sbMinLD, 10.0, 1.0, 200.0,
+              "Minimum Lift-to-Drag ratio constraint.");
 
     inspectorLayout->addWidget(constraintsGroup);
 
