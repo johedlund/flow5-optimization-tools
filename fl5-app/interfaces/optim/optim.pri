@@ -1,5 +1,6 @@
 
 HEADERS += \
+    $$PWD/inducedaoaadapter.h \
     $$PWD/optimizationpanel.h \
     $$PWD/optimfoildlg.h \
     $$PWD/optimplanedlg.h \
@@ -9,6 +10,7 @@ HEADERS += \
     $$PWD/psotaskplane.h \
 
 SOURCES += \
+    $$PWD/inducedaoaadapter.cpp \
     $$PWD/optimizationpanel.cpp \
     $$PWD/optimfoildlg.cpp \
     $$PWD/optimplanedlg.cpp \
