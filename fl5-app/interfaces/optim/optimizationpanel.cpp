@@ -49,6 +49,7 @@
 #include <api/xfoiltask.h>
 #include <interfaces/optim/psotaskfoil.h>
 #include <interfaces/optim/psotask.h>
+#include <interfaces/graphs/controls/graphoptions.h>
 #include <interfaces/graphs/containers/graphwt.h>
 #include <interfaces/graphs/graph/graph.h>
 #include <interfaces/graphs/graph/curve.h>
@@ -135,16 +136,22 @@ void OptimizationPanel::setupUI()
     m_pGraph->setCurveModel(m_pCurveModel);
     m_pGraph->setName("Optimization Progress");
     m_pGraph->setXVariableList({"Iteration"});
-    m_pGraph->setYVariableList({"Fitness"});
+    m_pGraph->setYVariableList({"Best Fitness"});
     m_pGraph->setVariables(0, 0);
+    m_pGraph->setScaleType(GRAPH::EXPANDING);
+    GraphOptions::resetGraphSettings(*m_pGraph);
     m_pGraph->showXMajGrid(true);
     m_pGraph->showYMajGrid(0, true);
+    m_pGraph->showXMinGrid(true);
+    m_pGraph->showYMinGrid(0, true);
     m_pGraph->setLegendVisible(true);
+    m_pGraph->setLegendPosition(Qt::AlignTop | Qt::AlignHCenter);
 
     m_pFitnessCurve = m_pGraph->addCurve("Best Fitness", AXIS::LEFTYAXIS, true);
     if(m_pFitnessCurve) {
         m_pFitnessCurve->setColor(Qt::blue);
         m_pFitnessCurve->setStipple(Line::SOLID);
+        m_pFitnessCurve->setWidth(2);
     }
 
     m_pGraphWt = new GraphWt(this);
@@ -433,6 +440,13 @@ void OptimizationPanel::onRun()
     PSOTaskFoil::ObjectiveType objType = static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
     m_pTask->setObjectiveType(objType);
 
+    const QString objectiveLabel = m_ObjectiveCombo->currentText();
+    m_pGraph->setName(QString("Optimization Progress - %1").arg(objectiveLabel));
+    m_pGraph->setYVariableList({QString("Best Fitness (%1)").arg(objectiveLabel)});
+    m_pGraph->setVariables(0, 0);
+    if(m_pFitnessCurve)
+        m_pFitnessCurve->setName(QString("Best Fitness (%1)").arg(objectiveLabel));
+
     m_BestValid = false;
 
     // Configure Target
@@ -505,7 +519,11 @@ void OptimizationPanel::onRun()
     m_LogOutput->clear();
     log("Optimization started.");
 
+    if(m_pGraphWt)
+        m_pGraphWt->clearOutputInfo();
+
     m_pFitnessCurve->clear();
+    m_pGraph->invalidate();
     m_pGraph->resetLimits();
     m_pGraphWt->update();
     rebuildSectionPreview();
@@ -593,12 +611,23 @@ void OptimizationPanel::customEvent(QEvent *event)
             m_StatusLabel->setText(QString("Iteration %1 / %2").arg(pEvent->iter()).arg(PSOTask::s_MaxIter));
             
             double bestFitness = pEvent->particle().fitness(0);
-            m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
-            if (pEvent->iter() % 5 == 0) {
-                m_pGraph->resetLimits();
-                m_pGraphWt->update();
+            if(m_pFitnessCurve)
+                m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
+
+            const QString info = QString("Iter %1/%2\nBest fitness: %3\nObjective: %4")
+                                     .arg(pEvent->iter())
+                                     .arg(PSOTask::s_MaxIter)
+                                     .arg(bestFitness, 0, 'g', 6)
+                                     .arg(m_ObjectiveCombo ? m_ObjectiveCombo->currentText() : QString("Fitness"));
+            if(m_pGraphWt)
+                m_pGraphWt->setOutputInfo(info);
+
+            m_pGraph->invalidate();
+            m_pGraph->resetLimits();
+            m_pGraphWt->update();
+
+            if (pEvent->iter() % 5 == 0)
                 updateCandidatePreview(pEvent->particle());
-            }
         }
     }
     else if(event->type() == OPTIM_END_EVENT)
@@ -611,6 +640,16 @@ void OptimizationPanel::customEvent(QEvent *event)
              m_BestValid = m_BestParticle.isConverged();
              log(QString("Best Fitness: %1").arg(m_BestParticle.fitness(0)));
              updateCandidatePreview(m_BestParticle);
+             m_pGraph->invalidate();
+             m_pGraph->resetLimits();
+             m_pGraphWt->update();
+
+             const QString info = QString("Iterations: %1\nBest fitness: %2\nObjective: %3")
+                                      .arg(PSOTask::s_MaxIter)
+                                      .arg(m_BestParticle.fitness(0), 0, 'g', 6)
+                                      .arg(m_ObjectiveCombo ? m_ObjectiveCombo->currentText() : QString("Fitness"));
+             if(m_pGraphWt)
+                 m_pGraphWt->setOutputInfo(info);
 
              if(m_BestValid) {
                  m_StatusLabel->setText("Optimization finished.");
