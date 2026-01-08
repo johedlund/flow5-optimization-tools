@@ -234,7 +234,7 @@ void OptimizationPanel::setupUI()
     runLayout->addRow("Mach:", m_sbMach);
 
     m_sbNCrit = new QDoubleSpinBox(this);
-    m_sbNCrit->setRange(1.0, 20.0);
+    m_sbNCrit->setRange(0.0, 20.0);  // NCrit=0 forces transition at LE
     m_sbNCrit->setValue(9.0);
     m_sbNCrit->setSingleStep(0.5);
     runLayout->addRow("NCrit:", m_sbNCrit);
