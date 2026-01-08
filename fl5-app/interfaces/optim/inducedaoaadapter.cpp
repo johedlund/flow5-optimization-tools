@@ -116,19 +116,25 @@ bool InducedAoAAdapter::run()
     // Create polar with flight conditions
     m_pPolar = new PlanePolar;
     m_pPolar->setDefaults();
+    m_pPolar->setType(xfl::T1POLAR);          // Fixed speed polar
+    m_pPolar->setVelocity(m_Velocity);
     m_pPolar->setDensity(m_Density);
     m_pPolar->setViscosity(m_Viscosity);
-    m_pPolar->setAnalysisMethod(xfl::VLM2);  // VLM2 is fast and gives induced angles
+    m_pPolar->setAnalysisMethod(xfl::VLM2);   // VLM2 is fast and gives induced angles
     m_pPolar->setViscous(false);              // Inviscid for speed - we only need induced AoA
+    m_pPolar->setThinSurfaces(true);          // Thin surface model for VLM
     m_pPolar->setReferenceChordLength(m_pPlane->mac());
     m_pPolar->setReferenceArea(m_pPlane->projectedArea(false));
     m_pPolar->setReferenceSpanLength(m_pPlane->projectedSpan());
+    m_pPolar->setPlaneName(m_pPlane->name());
 
     // Build plane mesh
     m_pPlane->makePlane(m_pPolar->bThickSurfaces(), true, m_pPolar->isTriangleMethod());
 
     // Create and configure task
     m_pTask = new PlaneTask;
+    m_pTask->setKeepOpps(true);  // Keep results for extraction
+    m_pTask->outputToStdIO(false);  // Quiet mode for optimization
     PanelAnalysis::setMultiThread(false);  // Single-threaded for safety in optimization loop
     Task3d::setCancelled(false);
     TriMesh::setCancelled(false);
@@ -196,8 +202,8 @@ bool InducedAoAAdapter::run()
     m_bValid = true;
     m_Log = log.str();
 
-    // Clean up PlaneOpp
-    delete pPOpp;
+    // Note: PlaneOpp is owned by the task (setKeepOpps(true)), so don't delete it here.
+    // It will be cleaned up when m_pTask is deleted in the destructor.
 
     return true;
 }
