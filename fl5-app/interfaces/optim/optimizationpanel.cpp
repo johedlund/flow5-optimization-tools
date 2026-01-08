@@ -56,6 +56,51 @@
 #include <interfaces/graphs/graph/curvemodel.h>
 #include <interfaces/editors/foiledit/foilwt.h>
 
+namespace {
+
+QString objectiveMetricLabel(PSOTaskFoil::ObjectiveType type)
+{
+    switch(type) {
+        case PSOTaskFoil::ObjectiveType::MinimizeCd:
+            return "Cd";
+        case PSOTaskFoil::ObjectiveType::MaximizeLD:
+            return "L/D";
+        case PSOTaskFoil::ObjectiveType::MaximizeCl:
+            return "Cl";
+        case PSOTaskFoil::ObjectiveType::MinimizeCm:
+            return "Abs Cm";
+        case PSOTaskFoil::ObjectiveType::TargetCl:
+            return "Cl error";
+        case PSOTaskFoil::ObjectiveType::TargetCm:
+            return "Cm error";
+        case PSOTaskFoil::ObjectiveType::MaximizePowerFactor:
+            return "Power factor";
+        case PSOTaskFoil::ObjectiveType::MaximizeEnduranceFactor:
+            return "Endurance factor";
+    }
+    return "Objective";
+}
+
+double objectiveMetricFromFitness(PSOTaskFoil::ObjectiveType type, double fitness)
+{
+    if(fitness >= OPTIM_PENALTY)
+        return fitness;
+
+    switch(type) {
+        case PSOTaskFoil::ObjectiveType::MaximizeLD:
+        case PSOTaskFoil::ObjectiveType::MaximizeCl:
+        case PSOTaskFoil::ObjectiveType::MaximizePowerFactor:
+        case PSOTaskFoil::ObjectiveType::MaximizeEnduranceFactor:
+            return (fitness < 0.0) ? -fitness : fitness;
+        default:
+            break;
+    }
+
+    return fitness;
+}
+
+} // namespace
+
 OptimizationPanel::OptimizationPanel(QWidget *pParent)
     : QWidget(pParent)
 {
@@ -136,14 +181,18 @@ void OptimizationPanel::setupUI()
     m_pGraph->setCurveModel(m_pCurveModel);
     m_pGraph->setName("Optimization Progress");
     m_pGraph->setXVariableList({"Iteration"});
-    m_pGraph->setYVariableList({"Best Fitness"});
-    m_pGraph->setVariables(0, 0);
+    m_pGraph->setYVariableList({"Best Fitness", "Objective"});
+    m_pGraph->setVariables(0, 0, 1);
+    m_pGraph->enableRightAxis(true);
+    m_pGraph->showRightAxis(true);
     m_pGraph->setScaleType(GRAPH::EXPANDING);
     GraphOptions::resetGraphSettings(*m_pGraph);
     m_pGraph->showXMajGrid(true);
     m_pGraph->showYMajGrid(0, true);
     m_pGraph->showXMinGrid(true);
     m_pGraph->showYMinGrid(0, true);
+    m_pGraph->showYMajGrid(1, false);
+    m_pGraph->showYMinGrid(1, false);
     m_pGraph->setLegendVisible(true);
     m_pGraph->setLegendPosition(Qt::AlignTop | Qt::AlignHCenter);
 
@@ -152,6 +201,13 @@ void OptimizationPanel::setupUI()
         m_pFitnessCurve->setColor(Qt::blue);
         m_pFitnessCurve->setStipple(Line::SOLID);
         m_pFitnessCurve->setWidth(2);
+    }
+
+    m_pMetricCurve = m_pGraph->addCurve("Objective", AXIS::RIGHTYAXIS, true);
+    if(m_pMetricCurve) {
+        m_pMetricCurve->setColor(Qt::darkGreen);
+        m_pMetricCurve->setStipple(Line::DASH);
+        m_pMetricCurve->setWidth(2);
     }
 
     m_pGraphWt = new GraphWt(this);
@@ -441,11 +497,14 @@ void OptimizationPanel::onRun()
     m_pTask->setObjectiveType(objType);
 
     const QString objectiveLabel = m_ObjectiveCombo->currentText();
+    const QString metricLabel = objectiveMetricLabel(objType);
     m_pGraph->setName(QString("Optimization Progress - %1").arg(objectiveLabel));
-    m_pGraph->setYVariableList({QString("Best Fitness (%1)").arg(objectiveLabel)});
-    m_pGraph->setVariables(0, 0);
+    m_pGraph->setYVariableList({QString("Fitness (%1)").arg(objectiveLabel), metricLabel});
+    m_pGraph->setVariables(0, 0, 1);
     if(m_pFitnessCurve)
-        m_pFitnessCurve->setName(QString("Best Fitness (%1)").arg(objectiveLabel));
+        m_pFitnessCurve->setName(QString("Fitness (%1)").arg(objectiveLabel));
+    if(m_pMetricCurve)
+        m_pMetricCurve->setName(metricLabel);
 
     m_BestValid = false;
 
@@ -523,6 +582,8 @@ void OptimizationPanel::onRun()
         m_pGraphWt->clearOutputInfo();
 
     m_pFitnessCurve->clear();
+    if(m_pMetricCurve)
+        m_pMetricCurve->clear();
     m_pGraph->invalidate();
     m_pGraph->resetLimits();
     m_pGraphWt->update();
@@ -613,11 +674,19 @@ void OptimizationPanel::customEvent(QEvent *event)
             double bestFitness = pEvent->particle().fitness(0);
             if(m_pFitnessCurve)
                 m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
+            const PSOTaskFoil::ObjectiveType objType =
+                static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
+            const double metric = objectiveMetricFromFitness(objType, bestFitness);
+            if(m_pMetricCurve)
+                m_pMetricCurve->appendPoint(pEvent->iter(), metric);
 
-            const QString info = QString("Iter %1/%2\nBest fitness: %3\nObjective: %4")
+            const QString metricLabel = objectiveMetricLabel(objType);
+            const QString info = QString("Iter %1/%2\nFitness: %3\n%4: %5\nObjective: %6")
                                      .arg(pEvent->iter())
                                      .arg(PSOTask::s_MaxIter)
                                      .arg(bestFitness, 0, 'g', 6)
+                                     .arg(metricLabel)
+                                     .arg(metric, 0, 'g', 6)
                                      .arg(m_ObjectiveCombo ? m_ObjectiveCombo->currentText() : QString("Fitness"));
             if(m_pGraphWt)
                 m_pGraphWt->setOutputInfo(info);
@@ -644,9 +713,15 @@ void OptimizationPanel::customEvent(QEvent *event)
              m_pGraph->resetLimits();
              m_pGraphWt->update();
 
-             const QString info = QString("Iterations: %1\nBest fitness: %2\nObjective: %3")
+             const PSOTaskFoil::ObjectiveType objType =
+                 static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
+             const double metric = objectiveMetricFromFitness(objType, m_BestParticle.fitness(0));
+             const QString metricLabel = objectiveMetricLabel(objType);
+             const QString info = QString("Iterations: %1\nFitness: %2\n%3: %4\nObjective: %5")
                                       .arg(PSOTask::s_MaxIter)
                                       .arg(m_BestParticle.fitness(0), 0, 'g', 6)
+                                      .arg(metricLabel)
+                                      .arg(metric, 0, 'g', 6)
                                       .arg(m_ObjectiveCombo ? m_ObjectiveCombo->currentText() : QString("Fitness"));
              if(m_pGraphWt)
                  m_pGraphWt->setOutputInfo(info);

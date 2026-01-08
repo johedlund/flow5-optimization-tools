@@ -141,6 +141,7 @@ private:
     Graph *m_pGraph;
     CurveModel *m_pCurveModel;
     Curve *m_pFitnessCurve;
+    Curve *m_pMetricCurve;
 
     FoilWt *m_pSectionView;
     Foil *m_pGhostFoil{nullptr};
