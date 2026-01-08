@@ -224,6 +224,50 @@ void PSOTask::onStartIterations()
         QCoreApplication::processEvents(); // Keep UI/Events responsive if running in main thread
     }
     while(m_Status==xfl::RUNNING);
+
+    if (m_Status == xfl::CANCELLED)
+    {
+         outputMsg("The task has been cancelled\n");
+
+         makeParetoFrontier();
+
+         // select the best particle defined as the one which minimizes the normalized Manhattan distance to each objective
+         int iBest0 = 0;
+         double dist2 = LARGEVALUE;
+
+         Particle bestparticle;
+         for(int i=0; i<m_Pareto.size(); i++)
+         {
+             Particle const &particle = m_Pareto.at(i);
+             double dp2=0.0;
+             m_bConverged = true;
+             for(int iobj=0; iobj<m_Objective.size(); iobj++)
+             {
+                 if(fabs(m_Objective.at(iobj).m_MaxError)>1.0e-6)
+                     dp2 += (particle.error(iobj)/m_Objective.at(iobj).m_MaxError) * (particle.error(iobj)/m_Objective.at(iobj).m_MaxError); // normalized distance
+             }
+
+             if(dp2<dist2)
+             {
+                 iBest0 = i;
+                 dist2 = dp2;
+                 bestparticle = particle;
+             }
+         }
+         // check if the best particle has converged
+         m_bConverged = true;
+         for(int io=0; io<bestparticle.nObjectives(); io++)
+         {
+             if(m_Objective.at(io).m_Type==xfl::EQUALIZE)
+             {
+                 if(bestparticle.error(io)>m_Objective.at(io).m_MaxError)   m_bConverged = false;
+             }
+             else  if(bestparticle.error(io)>0.0) m_bConverged = false;
+         }
+
+         m_Status = xfl::FINISHED;
+         postPSOEvent(iBest0); // tell the GUI that the task is done
+    }
 }
 
 

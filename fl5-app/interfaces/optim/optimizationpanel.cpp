@@ -363,7 +363,7 @@ void OptimizationPanel::setupUI()
     addConRow("Min LE Radius", m_chkMinLERadius, m_sbMinLERadius, 0.01, 0.001, 0.1);
     addConRow("Min TE Thickness", m_chkMinTEGap, m_sbMinTEGap, 0.002, 0.0005, 0.05);
     addConRow("Max Wiggliness", m_chkMaxWiggliness, m_sbMaxWiggliness, 1.0, 0.1, 100.0);
-    addConRow("Min Section Modulus", m_chkMinModulus, m_sbMinModulus, 0.001, 0.0001, 0.1);
+    addConRow("Min Section Modulus (S/c³)", m_chkMinModulus, m_sbMinModulus, 0.001, 0.0001, 100000.0);
 
     addConRow("Min Camber", m_chkMinCamber, m_sbMinCamber, 0.0, 0.001, 0.2);
     addConRow("Max Camber", m_chkMaxCamber, m_sbMaxCamber, 0.1, 0.001, 0.2);
