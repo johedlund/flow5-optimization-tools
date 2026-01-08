@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Git Identity
+
+**Run this at session start** to track contributions:
+```bash
+export GIT_AUTHOR_NAME="Claude Agent" GIT_AUTHOR_EMAIL="claude@agent.flow5" GIT_COMMITTER_NAME="Claude Agent" GIT_COMMITTER_EMAIL="claude@agent.flow5"
+```
+
 ## Project Overview
 
 Flow5 is a potential flow solver (aerodynamic analysis) with built-in pre/post-processing. It's version 7 of the legacy xflr5 project, used for preliminary design of wings, planes, hydrofoils, and sails.

@@ -1,5 +1,12 @@
 # Flow5 Project Context
 
+## Git Identity
+
+**Run this at session start** to track contributions:
+```bash
+export GIT_AUTHOR_NAME="Gemini Agent" GIT_AUTHOR_EMAIL="gemini@agent.flow5" GIT_COMMITTER_NAME="Gemini Agent" GIT_COMMITTER_EMAIL="gemini@agent.flow5"
+```
+
 ## Project Overview
 
 **Flow5** is a potential flow solver application designed for the preliminary design and analysis of wings, planes, hydrofoils, and sails. It is the successor to the legacy `xflr5` project.
