@@ -989,7 +989,7 @@ void OptimizationPanel::addConstraintRow()
     row->opCombo = new QComboBox(this);
     row->opCombo->addItem("≥", 0);  // Greater or equal (min constraint)
     row->opCombo->addItem("≤", 1);  // Less or equal (max constraint)
-    row->opCombo->setFixedWidth(40);
+    row->opCombo->setFixedWidth(50);
     layout->addWidget(row->opCombo);
 
     // Reference checkbox

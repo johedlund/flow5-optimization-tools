@@ -904,12 +904,25 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
 
     if(m_Preset == PresetType::V2_Camber_Thickness)
     {
-        if(pParticle->dimension() < 4) return;
+        double maxC, maxT, xC, xT;
 
-        double maxC = pParticle->pos(0);
-        double maxT = pParticle->pos(1);
-        double xC   = pParticle->pos(2);
-        double xT   = pParticle->pos(3);
+        if(m_bSymmetric)
+        {
+            // Symmetric: only [MaxThickness, XThickness] variables, camber forced to 0
+            if(pParticle->dimension() < 2) return;
+            maxC = 0.0;
+            maxT = pParticle->pos(0);
+            xC = 0.3; // Fixed camber position (doesn't matter since camber = 0)
+            xT = pParticle->pos(1);
+        }
+        else
+        {
+            if(pParticle->dimension() < 4) return;
+            maxC = pParticle->pos(0);
+            maxT = pParticle->pos(1);
+            xC   = pParticle->pos(2);
+            xT   = pParticle->pos(3);
+        }
 
         workFoil.setCamber(xC, maxC);
         workFoil.setThickness(xT, maxT);
@@ -919,7 +932,8 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     else if(m_Preset == PresetType::V3_BSpline_Control)
     {
         // V3: Create work foil from modified B-spline control points
-        if(m_BaseBSpline.nCtrlPoints() < 4) return;
+        const int nCtrl = m_BaseBSpline.nCtrlPoints();
+        if(nCtrl < 4) return;
 
         // Copy the base B-spline and modify control point Y coordinates
         BSpline workBSpline;
@@ -932,6 +946,26 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             Node2d pt = workBSpline.controlPoint(ctrlIndex);
             pt.y = pParticle->pos(i);
             workBSpline.setCtrlPoint(ctrlIndex, pt);
+        }
+
+        // For symmetric mode, mirror upper surface to lower surface
+        if(m_bSymmetric)
+        {
+            for(int i = 1; i < m_BSplineLECtrlIndex; ++i)
+            {
+                const int mirrorIndex = nCtrl - 1 - i;
+                if(mirrorIndex > m_BSplineLECtrlIndex && mirrorIndex < nCtrl - 1)
+                {
+                    Node2d upperPt = workBSpline.controlPoint(i);
+                    Node2d lowerPt = workBSpline.controlPoint(mirrorIndex);
+                    lowerPt.y = -upperPt.y;
+                    workBSpline.setCtrlPoint(mirrorIndex, lowerPt);
+                }
+            }
+            // Set LE to y=0 for perfect symmetry
+            Node2d lePt = workBSpline.controlPoint(m_BSplineLECtrlIndex);
+            lePt.y = 0.0;
+            workBSpline.setCtrlPoint(m_BSplineLECtrlIndex, lePt);
         }
 
         // Generate the output curve from modified control points
@@ -949,10 +983,43 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         if(!m_OptimBaseNodes.empty())
             workFoil.setBaseNodes(m_OptimBaseNodes);
 
+        // Find LE index in the optimized base nodes
+        int leOptimIndex = 0;
+        const int nOptim = int(m_OptimBaseNodes.size());
+        if(nOptim > 0)
+        {
+            double minX = m_OptimBaseNodes[0].x;
+            for(int i = 1; i < nOptim; ++i)
+            {
+                if(m_OptimBaseNodes[i].x < minX)
+                {
+                    minX = m_OptimBaseNodes[i].x;
+                    leOptimIndex = i;
+                }
+            }
+        }
+
+        // Apply particle position values to upper surface
         for(int i=0; i<int(m_VarToBase.size()); ++i)
         {
             const int baseIndex = m_VarToBase[i];
             workFoil.setBaseNode(baseIndex, workFoil.xb(baseIndex), pParticle->pos(i));
+        }
+
+        // For symmetric mode, mirror upper surface to lower surface
+        if(m_bSymmetric && nOptim > 2)
+        {
+            for(int i = 1; i < leOptimIndex; ++i)
+            {
+                const int mirrorIndex = nOptim - 1 - i;
+                if(mirrorIndex > leOptimIndex && mirrorIndex < nOptim - 1)
+                {
+                    double y = workFoil.yb(i);
+                    workFoil.setBaseNode(mirrorIndex, workFoil.xb(mirrorIndex), -y);
+                }
+            }
+            // Set LE to y=0 for perfect symmetry
+            workFoil.setBaseNode(leOptimIndex, workFoil.xb(leOptimIndex), 0.0);
         }
     }
 
