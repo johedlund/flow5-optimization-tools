@@ -136,38 +136,12 @@ void OptimizationPanel::initPanel(Foil *pFoil, Polar *pPolar)
     {
         log("Target Foil: " + QString::fromStdString(m_pFoil->name()));
 
-        // Init constraints with foil values
-        m_sbMinThickness->setValue(m_pFoil->maxThickness());
-        m_sbMaxThickness->setValue(m_pFoil->maxThickness());
-        m_sbMinLERadius->setValue(m_pFoil->LERadius());
-        m_sbMinTEGap->setValue(m_pFoil->TEGap());
-        m_sbMaxWiggliness->setValue(m_pFoil->wiggliness());
-        
-        m_sbMinCamber->setValue(m_pFoil->maxCamber());
-        m_sbMaxCamber->setValue(m_pFoil->maxCamber());
-        m_sbMinXCamber->setValue(m_pFoil->xCamber());
-        m_sbMaxXCamber->setValue(m_pFoil->xCamber());
-        m_sbMinXThickness->setValue(m_pFoil->xThickness());
-        m_sbMaxXThickness->setValue(m_pFoil->xThickness());
-        
-        // Approx area
-        double area = 0.0;
-        const int n = m_pFoil->nBaseNodes();
-        for(int i=0; i<n-1; ++i) {
-            area += (m_pFoil->xb(i) * m_pFoil->yb(i+1) - m_pFoil->xb(i+1) * m_pFoil->yb(i));
-        }
-        area = std::fabs(0.5 * area);
-        m_sbMinArea->setValue(area);
-
-        double t = m_pFoil->maxThickness();
-        m_sbMinModulus->setValue(0.12 * t * t);
-        
         if (m_pPolar) {
             m_sbReynolds->setValue(m_pPolar->Reynolds() / 1.0e6); // Display in Millions
             m_sbMach->setValue(m_pPolar->Mach());
             m_sbNCrit->setValue(m_pPolar->NCrit());
         }
-        
+
         rebuildSectionPreview();
     }
 }
@@ -415,83 +389,21 @@ void OptimizationPanel::setupUI()
     objLayout->addWidget(m_TargetValueSpin, 1, 2);
     inspectorLayout->addWidget(objGroup);
 
-    // Constraints Group
+    // Constraints Group - Dynamic list with Add button
     auto *constraintsGroup = new QGroupBox("Constraints", inspectorWidget);
-    auto *conLayout = new QGridLayout(constraintsGroup);
-    
-    conLayout->addWidget(new QLabel("Constraint"), 0, 0);
-    conLayout->addWidget(new QLabel("Enabled"), 0, 1);
-    conLayout->addWidget(new QLabel("Limit"), 0, 2);
+    auto *conMainLayout = new QVBoxLayout(constraintsGroup);
+    conMainLayout->setSpacing(4);
 
-    int row = 1;
-    auto addConRow = [&](QString name, QCheckBox*& chk, QDoubleSpinBox*& sb, double val, double step, double max, QString tooltip) {
-        chk = new QCheckBox(this); 
-        chk->setToolTip(tooltip);
-        sb = new QDoubleSpinBox(this);
-        sb->setRange(0, max);
-        sb->setValue(val);
-        sb->setSingleStep(step);
-        sb->setDecimals(4);
-        sb->setEnabled(false);
-        sb->setToolTip(tooltip);
-        connect(chk, &QCheckBox::toggled, sb, &QDoubleSpinBox::setEnabled);
-        
-        QLabel* label = new QLabel(name);
-        label->setToolTip(tooltip);
-        conLayout->addWidget(label, row, 0);
-        conLayout->addWidget(chk, row, 1);
-        conLayout->addWidget(sb, row, 2);
-        row++;
-    };
+    // Container for constraint rows
+    m_ConstraintListLayout = new QVBoxLayout();
+    m_ConstraintListLayout->setSpacing(2);
+    conMainLayout->addLayout(m_ConstraintListLayout);
 
-    addConRow("Min Thickness (t/c)", m_chkMinThickness, m_sbMinThickness, 0.08, 0.001, 0.5,
-              "Minimum maximum thickness relative to chord (t/c).");
-    addConRow("Max Thickness (t/c)", m_chkMaxThickness, m_sbMaxThickness, 0.15, 0.001, 0.5,
-              "Maximum maximum thickness relative to chord (t/c).");
-    addConRow("Min LE Radius", m_chkMinLERadius, m_sbMinLERadius, 0.01, 0.001, 0.1,
-              "Minimum Leading Edge radius relative to chord.\n"
-              "Prevents sharp leading edges that cause separation spikes.");
-    addConRow("Min TE Thickness", m_chkMinTEGap, m_sbMinTEGap, 0.002, 0.0005, 0.05,
-              "Minimum Trailing Edge thickness (gap) relative to chord.\n"
-              "Essential for structural integrity at the trailing edge.");
-    addConRow("Max Wiggliness", m_chkMaxWiggliness, m_sbMaxWiggliness, 1.0, 0.1, 100.0,
-              "Limits the variation of curvature to prevent wavy surfaces.");
-    addConRow("Min Section Modulus (S/c³)", m_chkMinModulus, m_sbMinModulus, 0.001, 0.0001, 100000.0,
-              "Minimum Section Modulus (approximated as 0.12 * t^2).\n"
-              "Proxy for spar bending strength.");
-
-    addConRow("Min Camber", m_chkMinCamber, m_sbMinCamber, 0.0, 0.001, 0.2,
-              "Minimum maximum camber relative to chord.");
-    addConRow("Max Camber", m_chkMaxCamber, m_sbMaxCamber, 0.1, 0.001, 0.2,
-              "Maximum maximum camber relative to chord.");
-    addConRow("Min X Camber", m_chkMinXCamber, m_sbMinXCamber, 0.1, 0.05, 0.9,
-              "Minimum chordwise position of maximum camber (0.0=LE, 1.0=TE).");
-    addConRow("Max X Camber", m_chkMaxXCamber, m_sbMaxXCamber, 0.5, 0.05, 0.9,
-              "Maximum chordwise position of maximum camber (0.0=LE, 1.0=TE).");
-    addConRow("Min X Thickness", m_chkMinXThickness, m_sbMinXThickness, 0.1, 0.05, 0.9,
-              "Minimum chordwise position of maximum thickness (0.0=LE, 1.0=TE).");
-    addConRow("Max X Thickness", m_chkMaxXThickness, m_sbMaxXThickness, 0.5, 0.05, 0.9,
-              "Maximum chordwise position of maximum thickness (0.0=LE, 1.0=TE).");
-    addConRow("Min Area", m_chkMinArea, m_sbMinArea, 0.01, 0.001, 0.5,
-              "Minimum cross-sectional area relative to chord^2.\n"
-              "Useful for internal volume or torsional stiffness.");
-
-    addConRow("Min Cl", m_chkMinCl, m_sbMinCl, 0.0, 0.1, 5.0,
-              "Minimum Lift Coefficient (Cl) constraint.");
-    addConRow("Max Cl", m_chkMaxCl, m_sbMaxCl, 1.5, 0.1, 5.0,
-              "Maximum Lift Coefficient (Cl) constraint.");
-    addConRow("Min Cd", m_chkMinCd, m_sbMinCd, 0.0, 0.0001, 0.1,
-              "Minimum Drag Coefficient (Cd) constraint (rarely used).");
-    addConRow("Max Cd", m_chkMaxCd, m_sbMaxCd, 0.02, 0.001, 0.5,
-              "Maximum Drag Coefficient (Cd) constraint.\n"
-              "Discard foils with drag higher than this.");
-    addConRow("Min Cm", m_chkMinCm, m_sbMinCm, -0.5, 0.01, 0.5,
-              "Minimum Pitching Moment Coefficient (Cm).\n"
-              "Usually negative; limits how nose-down the moment is.");
-    addConRow("Max Cm", m_chkMaxCm, m_sbMaxCm, 0.0, 0.01, 0.5,
-              "Maximum Pitching Moment Coefficient (Cm).");
-    addConRow("Min L/D", m_chkMinLD, m_sbMinLD, 10.0, 1.0, 200.0,
-              "Minimum Lift-to-Drag ratio constraint.");
+    // Add constraint button
+    m_AddConstraintBtn = new QPushButton("+ Add Constraint", this);
+    m_AddConstraintBtn->setToolTip("Add a new constraint to the optimization");
+    connect(m_AddConstraintBtn, &QPushButton::clicked, this, &OptimizationPanel::addConstraintRow);
+    conMainLayout->addWidget(m_AddConstraintBtn);
 
     inspectorLayout->addWidget(constraintsGroup);
 
@@ -583,24 +495,6 @@ void OptimizationPanel::onRun()
         return;
     }
 
-    // Validate Constraints
-    auto checkMinMax = [&](QCheckBox* minChk, QDoubleSpinBox* minSb, 
-                           QCheckBox* maxChk, QDoubleSpinBox* maxSb, const QString& name) -> bool {
-        if(minChk->isChecked() && maxChk->isChecked() && minSb->value() > maxSb->value()) {
-            QMessageBox::warning(this, "Input Error", QString("Min %1 cannot be greater than Max %1.").arg(name));
-            return false;
-        }
-        return true;
-    };
-
-    if(!checkMinMax(m_chkMinThickness, m_sbMinThickness, m_chkMaxThickness, m_sbMaxThickness, "Thickness")) return;
-    if(!checkMinMax(m_chkMinCamber, m_sbMinCamber, m_chkMaxCamber, m_sbMaxCamber, "Camber")) return;
-    if(!checkMinMax(m_chkMinXCamber, m_sbMinXCamber, m_chkMaxXCamber, m_sbMaxXCamber, "XCamber")) return;
-    if(!checkMinMax(m_chkMinXThickness, m_sbMinXThickness, m_chkMaxXThickness, m_sbMaxXThickness, "XThickness")) return;
-    if(!checkMinMax(m_chkMinCl, m_sbMinCl, m_chkMaxCl, m_sbMaxCl, "Cl")) return;
-    if(!checkMinMax(m_chkMinCd, m_sbMinCd, m_chkMaxCd, m_sbMaxCd, "Cd")) return;
-    if(!checkMinMax(m_chkMinCm, m_sbMinCm, m_chkMaxCm, m_sbMaxCm, "Cm")) return;
-
     // Configure Objectives
     m_pTask->setNObjectives(1);
     m_pTask->setObjective(0, OptObjective("Fitness", 0, true, 0.0, 0.0, xfl::MINIMIZE));
@@ -681,59 +575,8 @@ void OptimizationPanel::onRun()
         m_CachedInducedAlpha = 0.0;
     }
 
-    // Configure Constraints
-    PSOTaskFoil::Constraints constraints;
-    constraints.enabled = true;
-    constraints.minThickness.enabled = m_chkMinThickness->isChecked();
-    constraints.minThickness.value = m_sbMinThickness->value();
-    constraints.maxThickness.enabled = m_chkMaxThickness->isChecked();
-    constraints.maxThickness.value = m_sbMaxThickness->value();
-    constraints.minLERadius.enabled = m_chkMinLERadius->isChecked();
-    constraints.minLERadius.value = m_sbMinLERadius->value();
-    constraints.minTEThickness.enabled = m_chkMinTEGap->isChecked();
-    constraints.minTEThickness.value = m_sbMinTEGap->value();
-    constraints.maxWiggliness.enabled = m_chkMaxWiggliness->isChecked();
-    constraints.maxWiggliness.value = m_sbMaxWiggliness->value();
-    constraints.minSectionModulus.enabled = m_chkMinModulus->isChecked();
-    constraints.minSectionModulus.value = m_sbMinModulus->value();
-
-    constraints.minCamber.enabled = m_chkMinCamber->isChecked();
-    constraints.minCamber.value = m_sbMinCamber->value();
-    constraints.maxCamber.enabled = m_chkMaxCamber->isChecked();
-    constraints.maxCamber.value = m_sbMaxCamber->value();
-
-    constraints.minXCamber.enabled = m_chkMinXCamber->isChecked();
-    constraints.minXCamber.value = m_sbMinXCamber->value();
-    constraints.maxXCamber.enabled = m_chkMaxXCamber->isChecked();
-    constraints.maxXCamber.value = m_sbMaxXCamber->value();
-
-    constraints.minXThickness.enabled = m_chkMinXThickness->isChecked();
-    constraints.minXThickness.value = m_sbMinXThickness->value();
-    constraints.maxXThickness.enabled = m_chkMaxXThickness->isChecked();
-    constraints.maxXThickness.value = m_sbMaxXThickness->value();
-
-    constraints.minArea.enabled = m_chkMinArea->isChecked();
-    constraints.minArea.value = m_sbMinArea->value();
-
-    constraints.minCl.enabled = m_chkMinCl->isChecked();
-    constraints.minCl.value = m_sbMinCl->value();
-    constraints.maxCl.enabled = m_chkMaxCl->isChecked();
-    constraints.maxCl.value = m_sbMaxCl->value();
-
-    constraints.minCd.enabled = m_chkMinCd->isChecked();
-    constraints.minCd.value = m_sbMinCd->value();
-    constraints.maxCd.enabled = m_chkMaxCd->isChecked();
-    constraints.maxCd.value = m_sbMaxCd->value();
-
-    constraints.minCm.enabled = m_chkMinCm->isChecked();
-    constraints.minCm.value = m_sbMinCm->value();
-    constraints.maxCm.enabled = m_chkMaxCm->isChecked();
-    constraints.maxCm.value = m_sbMaxCm->value();
-
-    constraints.minLD.enabled = m_chkMinLD->isChecked();
-    constraints.minLD.value = m_sbMinLD->value();
-
-    m_pTask->setConstraints(constraints);
+    // Configure Constraints from dynamic list
+    m_pTask->setConstraints(buildConstraints());
 
     updateUI(true);
     m_StatusLabel->setText("Optimizing...");
@@ -1081,4 +924,156 @@ void OptimizationPanel::populateSectionList(PlaneXfl *pPlane, int wingIndex)
     }
 
     m_SectionCombo->blockSignals(false);
+}
+
+// Constraint parameter definitions: name, field mapping, default, step, max, min-allowed
+static const struct ConstraintDef {
+    const char *name;
+    int fieldIndex; // 0-20 mapping to Constraints fields
+    double defaultVal;
+    double step;
+    double maxVal;
+    double minVal;
+} s_ConstraintDefs[] = {
+    // Geometric
+    {"Min Thickness", 0, 0.08, 0.001, 0.5, 0.0},
+    {"Max Thickness", 1, 0.15, 0.001, 0.5, 0.0},
+    {"Min LE Radius", 2, 0.01, 0.001, 0.1, 0.0},
+    {"Min TE Gap", 3, 0.002, 0.0005, 0.05, 0.0},
+    {"Max Wiggliness", 4, 1.0, 0.1, 100.0, 0.0},
+    {"Min Section Mod.", 5, 0.001, 0.0001, 1.0, 0.0},
+    {"Min Camber", 6, 0.0, 0.001, 0.2, -0.2},
+    {"Max Camber", 7, 0.1, 0.001, 0.2, -0.2},
+    {"Min X Camber", 8, 0.1, 0.05, 0.9, 0.0},
+    {"Max X Camber", 9, 0.5, 0.05, 0.9, 0.0},
+    {"Min X Thickness", 10, 0.1, 0.05, 0.9, 0.0},
+    {"Max X Thickness", 11, 0.5, 0.05, 0.9, 0.0},
+    {"Min Area", 12, 0.01, 0.001, 0.5, 0.0},
+    // Aerodynamic
+    {"Min Cl", 13, 0.0, 0.1, 3.0, -1.0},
+    {"Max Cl", 14, 1.5, 0.1, 3.0, -1.0},
+    {"Min Cd", 15, 0.0, 0.0001, 0.1, 0.0},
+    {"Max Cd", 16, 0.02, 0.001, 0.5, 0.0},
+    {"Min Cm", 17, -0.5, 0.01, 0.5, -0.5},
+    {"Max Cm", 18, 0.0, 0.01, 0.5, -0.5},
+    {"Min L/D", 19, 10.0, 1.0, 200.0, 0.0},
+};
+static const int s_NumConstraintDefs = sizeof(s_ConstraintDefs) / sizeof(s_ConstraintDefs[0]);
+
+void OptimizationPanel::addConstraintRow()
+{
+    auto *row = new ConstraintRow();
+    row->widget = new QWidget(this);
+    auto *layout = new QHBoxLayout(row->widget);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
+
+    // Parameter combo
+    row->paramCombo = new QComboBox(this);
+    for (int i = 0; i < s_NumConstraintDefs; ++i) {
+        row->paramCombo->addItem(s_ConstraintDefs[i].name, i);
+    }
+    row->paramCombo->setFixedWidth(120);
+    layout->addWidget(row->paramCombo);
+
+    // Operator combo
+    row->opCombo = new QComboBox(this);
+    row->opCombo->addItem("≥", 0);  // Greater or equal (for min constraints)
+    row->opCombo->addItem("≤", 1);  // Less or equal (for max constraints)
+    row->opCombo->setFixedWidth(40);
+    layout->addWidget(row->opCombo);
+
+    // Value spinbox
+    row->valueSpin = new QDoubleSpinBox(this);
+    row->valueSpin->setDecimals(4);
+    row->valueSpin->setFixedWidth(80);
+    layout->addWidget(row->valueSpin);
+
+    // Delete button
+    row->deleteBtn = new QPushButton("×", this);
+    row->deleteBtn->setFixedWidth(24);
+    row->deleteBtn->setToolTip("Remove constraint");
+    layout->addWidget(row->deleteBtn);
+
+    // Connect signals
+    connect(row->paramCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this, row](int) { onParamChanged(row); });
+    connect(row->deleteBtn, &QPushButton::clicked,
+            this, [this, row]() { removeConstraintRow(row); });
+
+    // Initialize with first parameter's defaults
+    onParamChanged(row);
+
+    m_ConstraintRows.append(row);
+    m_ConstraintListLayout->addWidget(row->widget);
+}
+
+void OptimizationPanel::removeConstraintRow(ConstraintRow *row)
+{
+    if (!row) return;
+
+    m_ConstraintListLayout->removeWidget(row->widget);
+    m_ConstraintRows.removeOne(row);
+
+    row->widget->deleteLater();
+    delete row;
+}
+
+void OptimizationPanel::onParamChanged(ConstraintRow *row)
+{
+    if (!row || !row->paramCombo || !row->valueSpin || !row->opCombo) return;
+
+    int defIdx = row->paramCombo->currentData().toInt();
+    if (defIdx < 0 || defIdx >= s_NumConstraintDefs) return;
+
+    const auto &def = s_ConstraintDefs[defIdx];
+    row->valueSpin->setRange(def.minVal, def.maxVal);
+    row->valueSpin->setSingleStep(def.step);
+    row->valueSpin->setValue(def.defaultVal);
+
+    // Auto-select operator based on constraint name
+    QString name = def.name;
+    if (name.startsWith("Min"))
+        row->opCombo->setCurrentIndex(0); // ≥
+    else if (name.startsWith("Max"))
+        row->opCombo->setCurrentIndex(1); // ≤
+}
+
+PSOTaskFoil::Constraints OptimizationPanel::buildConstraints() const
+{
+    PSOTaskFoil::Constraints c;
+    c.enabled = !m_ConstraintRows.isEmpty();
+
+    for (const auto *row : m_ConstraintRows) {
+        if (!row || !row->paramCombo || !row->valueSpin) continue;
+
+        int defIdx = row->paramCombo->currentData().toInt();
+        double val = row->valueSpin->value();
+
+        // Map field index to constraint struct member
+        switch (defIdx) {
+            case 0:  c.minThickness = {val, true}; break;
+            case 1:  c.maxThickness = {val, true}; break;
+            case 2:  c.minLERadius = {val, true}; break;
+            case 3:  c.minTEThickness = {val, true}; break;
+            case 4:  c.maxWiggliness = {val, true}; break;
+            case 5:  c.minSectionModulus = {val, true}; break;
+            case 6:  c.minCamber = {val, true}; break;
+            case 7:  c.maxCamber = {val, true}; break;
+            case 8:  c.minXCamber = {val, true}; break;
+            case 9:  c.maxXCamber = {val, true}; break;
+            case 10: c.minXThickness = {val, true}; break;
+            case 11: c.maxXThickness = {val, true}; break;
+            case 12: c.minArea = {val, true}; break;
+            case 13: c.minCl = {val, true}; break;
+            case 14: c.maxCl = {val, true}; break;
+            case 15: c.minCd = {val, true}; break;
+            case 16: c.maxCd = {val, true}; break;
+            case 17: c.minCm = {val, true}; break;
+            case 18: c.maxCm = {val, true}; break;
+            case 19: c.minLD = {val, true}; break;
+        }
+    }
+
+    return c;
 }

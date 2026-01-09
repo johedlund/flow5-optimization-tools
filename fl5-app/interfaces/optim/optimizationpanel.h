@@ -48,6 +48,16 @@ class QRadioButton;
 class QWidget;
 class FoilWt;
 class QTextEdit;
+class QVBoxLayout;
+
+// Dynamic constraint row widget
+struct ConstraintRow {
+    QWidget *widget{nullptr};
+    QComboBox *paramCombo{nullptr};
+    QComboBox *opCombo{nullptr};
+    QDoubleSpinBox *valueSpin{nullptr};
+    QPushButton *deleteBtn{nullptr};
+};
 
 class OptimizationPanel : public QWidget
 {
@@ -84,6 +94,12 @@ private:
     void populatePlaneList();
     void populateWingList(PlaneXfl *pPlane);
     void populateSectionList(PlaneXfl *pPlane, int wingIndex);
+
+    // Dynamic constraints
+    void addConstraintRow();
+    void removeConstraintRow(ConstraintRow *row);
+    void onParamChanged(ConstraintRow *row);
+    PSOTaskFoil::Constraints buildConstraints() const;
 
     Foil *m_pFoil{nullptr};
     Polar *m_pPolar{nullptr};
@@ -128,31 +144,10 @@ private:
     QComboBox *m_TargetModeCombo;
     QDoubleSpinBox *m_TargetValueSpin;
 
-    // Constraints (Table-like Grid)
-    QCheckBox *m_chkMinThickness; QDoubleSpinBox *m_sbMinThickness;
-    QCheckBox *m_chkMaxThickness; QDoubleSpinBox *m_sbMaxThickness;
-    QCheckBox *m_chkMinLERadius;  QDoubleSpinBox *m_sbMinLERadius;
-    QCheckBox *m_chkMinTEGap;     QDoubleSpinBox *m_sbMinTEGap;
-    QCheckBox *m_chkMaxWiggliness;QDoubleSpinBox *m_sbMaxWiggliness;
-    QCheckBox *m_chkMinModulus;   QDoubleSpinBox *m_sbMinModulus;
-
-    // New Geometric Constraints
-    QCheckBox *m_chkMinCamber;     QDoubleSpinBox *m_sbMinCamber;
-    QCheckBox *m_chkMaxCamber;     QDoubleSpinBox *m_sbMaxCamber;
-    QCheckBox *m_chkMinXCamber;    QDoubleSpinBox *m_sbMinXCamber;
-    QCheckBox *m_chkMaxXCamber;    QDoubleSpinBox *m_sbMaxXCamber;
-    QCheckBox *m_chkMinXThickness; QDoubleSpinBox *m_sbMinXThickness;
-    QCheckBox *m_chkMaxXThickness; QDoubleSpinBox *m_sbMaxXThickness;
-    QCheckBox *m_chkMinArea;       QDoubleSpinBox *m_sbMinArea;
-
-    // Aerodynamic Constraints
-    QCheckBox *m_chkMinCl; QDoubleSpinBox *m_sbMinCl;
-    QCheckBox *m_chkMaxCl; QDoubleSpinBox *m_sbMaxCl;
-    QCheckBox *m_chkMinCd; QDoubleSpinBox *m_sbMinCd;
-    QCheckBox *m_chkMaxCd; QDoubleSpinBox *m_sbMaxCd;
-    QCheckBox *m_chkMinCm; QDoubleSpinBox *m_sbMinCm;
-    QCheckBox *m_chkMaxCm; QDoubleSpinBox *m_sbMaxCm;
-    QCheckBox *m_chkMinLD; QDoubleSpinBox *m_sbMinLD;
+    // Dynamic Constraints
+    QVBoxLayout *m_ConstraintListLayout{nullptr};
+    QPushButton *m_AddConstraintBtn{nullptr};
+    QList<ConstraintRow*> m_ConstraintRows;
 
     // Visualization
     GraphWt *m_pGraphWt;
