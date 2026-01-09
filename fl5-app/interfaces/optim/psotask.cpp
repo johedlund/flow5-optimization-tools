@@ -40,6 +40,8 @@ double PSOTask::s_ProbRegenerate  = 0.07;
 double PSOTask::s_VelocityClamp   = 0.5;   // Max velocity = 50% of range
 int    PSOTask::s_LocalSearchInterval = 10; // Every 10 iterations
 double PSOTask::s_LocalSearchRadius   = 0.05; // 5% of range
+int    PSOTask::s_StagnationLimit     = 5;   // Iterations without improvement to trigger boost
+double PSOTask::s_StagnationRegenProb = 0.30; // 30% regeneration when stagnant
 
 int  PSOTask::s_PopSize           = 17;
 int  PSOTask::s_MaxIter           = 30;
@@ -154,6 +156,8 @@ void PSOTask::restoreDefaults()
     s_VelocityClamp     = 0.5;
     s_LocalSearchInterval = 10;
     s_LocalSearchRadius = 0.05;
+    s_StagnationLimit   = 5;
+    s_StagnationRegenProb = 0.30;
 }
 
 
@@ -228,6 +232,8 @@ void PSOTask::onStartIterations()
 
     m_Iter = 0;
     m_Status = xfl::RUNNING;
+    m_StagnationCounter = 0;
+    m_BestGlobalFitness = OPTIM_PENALTY;
 
     outputMsg("Starting swarm iterations\n");
     do
@@ -361,6 +367,21 @@ void PSOTask::onIteration()
 
     postIterEvent(iBest0);
 
+    // Track stagnation: did the best fitness improve?
+    double currentBestFitness = bestparticle.fitness(0);
+    const double improvementThreshold = 1.0e-6; // Consider improved if better by this margin
+    bool bImproved = (currentBestFitness < m_BestGlobalFitness - improvementThreshold);
+
+    if (bImproved)
+    {
+        m_BestGlobalFitness = currentBestFitness;
+        m_StagnationCounter = 0;
+    }
+    else
+    {
+        m_StagnationCounter++;
+    }
+
     if(m_Iter>=s_MaxIter || m_bConverged || m_Status==xfl::CANCELLED)
     {
         if     (m_bConverged)             outputMsg("   ---Converged---\n");
@@ -377,12 +398,21 @@ void PSOTask::onIteration()
     }
     else
     {
+        // Adaptive regeneration: boost probability when stagnant
+        bool bStagnant = (m_StagnationCounter >= s_StagnationLimit);
+        double regenProb = bStagnant ? s_StagnationRegenProb : s_ProbRegenerate;
+
+        if (bStagnant && m_StagnationCounter == s_StagnationLimit)
+        {
+            outputMsg(QString("Stagnation detected at iteration %1, boosting exploration\n").arg(m_Iter));
+        }
+
         // regenerate particles with random probability if they are not in the Pareto frontier - keep those
         for (int isw=0; isw<m_Swarm.size(); ++isw)
         {
             Particle &particle = m_Swarm[isw];
             double regen = QRandomGenerator::global()->bounded(1.0);
-            if (regen<s_ProbRegenerate)
+            if (regen<regenProb)
             {
                 bool bIsParetoParticle = false;
                 for(int ip=0; ip<m_Pareto.size(); ip++)
@@ -417,12 +447,23 @@ void PSOTask::moveParticle(Particle *pParticle) const
     // select a random best in the personal bests
     ipbest = QRandomGenerator::global()->bounded(pParticle->nBest());
 
+    // Check if personal best is at penalty level (never found a valid solution)
+    // If so, reduce cognitive influence and rely more on social + random exploration
+    const double penaltyThreshold = OPTIM_PENALTY * 0.5; // Consider penalty if > half of OPTIM_PENALTY
+    bool bPersonalBestIsPenalty = (pParticle->bestError(ipbest, 0) > penaltyThreshold);
+    bool bGlobalBestIsPenalty = (globalbest.error(0) > penaltyThreshold);
+
     // Compute inertia weight (adaptive or fixed)
     double inertia = s_InertiaWeight;
     if (s_bAdaptiveInertia && s_MaxIter > 1) {
         // Linear decrease from s_InertiaStart to s_InertiaEnd over iterations
         double t = double(m_Iter) / double(s_MaxIter - 1);
         inertia = s_InertiaStart - t * (s_InertiaStart - s_InertiaEnd);
+    }
+
+    // If stuck with penalty solutions, boost inertia to encourage exploration
+    if (bPersonalBestIsPenalty && bGlobalBestIsPenalty) {
+        inertia = std::max(inertia, s_InertiaStart);
     }
 
     // update the velocity
@@ -440,9 +481,19 @@ void PSOTask::moveParticle(Particle *pParticle) const
         r1 = QRandomGenerator::global()->bounded(1.0);
         r2 = QRandomGenerator::global()->bounded(1.0);
 
+        // Adjust weights based on whether personal/global bests are valid
+        double cogWeight = bPersonalBestIsPenalty ? 0.0 : s_CognitiveWeight;
+        double socWeight = bGlobalBestIsPenalty ? 0.0 : s_SocialWeight;
+
         vel = inertia * pParticle->vel(j) +
-              s_CognitiveWeight * r1 * (pParticle->bestPos(ipbest, j) - pParticle->pos(j)) +
-              s_SocialWeight    * r2 * (globalbest.pos(j)             - pParticle->pos(j));
+              cogWeight * r1 * (pParticle->bestPos(ipbest, j) - pParticle->pos(j)) +
+              socWeight * r2 * (globalbest.pos(j)             - pParticle->pos(j));
+
+        // If both bests are penalties, add random exploration component
+        if (bPersonalBestIsPenalty && bGlobalBestIsPenalty) {
+            double randomKick = (QRandomGenerator::global()->bounded(1.0) - 0.5) * deltap * 0.3;
+            vel += randomKick;
+        }
 
         // Velocity clamping to prevent overshooting
         if (s_VelocityClamp > 0.0) {

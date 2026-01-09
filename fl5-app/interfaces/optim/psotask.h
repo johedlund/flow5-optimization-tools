@@ -166,6 +166,10 @@ class PSOTask : public QObject
         QObject *m_pParent;
         xfl::enumAnalysisStatus m_Status;
 
+        // Stagnation tracking
+        int m_StagnationCounter{0};
+        double m_BestGlobalFitness{OPTIM_PENALTY};
+
         // size = dim
         std::vector<OptVariable> m_Variable;
 
@@ -185,6 +189,10 @@ class PSOTask : public QObject
         static double s_VelocityClamp;      // Max velocity as fraction of range (0=disabled)
         static int    s_LocalSearchInterval; // Iterations between local searches (0=disabled)
         static double s_LocalSearchRadius;  // Search radius as fraction of range
+
+        // Stagnation detection and recovery
+        static int    s_StagnationLimit;    // Iterations without improvement before boosting regeneration
+        static double s_StagnationRegenProb; // Regeneration probability when stagnant (vs s_ProbRegenerate)
 
         static QVector<Vector3d> s_DebugPts;
         static QVector<Vector3d> s_DebugVecs;
