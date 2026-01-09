@@ -259,9 +259,11 @@ void OptimizationPanel::setupUI()
     m_PresetCombo = new QComboBox(this);
     m_PresetCombo->addItem("V1: Y-only base nodes", static_cast<int>(PSOTaskFoil::PresetType::V1_Y_Only));
     m_PresetCombo->addItem("V2: Camber/Thickness", static_cast<int>(PSOTaskFoil::PresetType::V2_Camber_Thickness));
+    m_PresetCombo->addItem("V3: B-spline control", static_cast<int>(PSOTaskFoil::PresetType::V3_BSpline_Control));
     m_PresetCombo->setToolTip("Select the parametrization method for the foil geometry.\n"
-                              "V1: Modifies Y-coordinates of base nodes.\n"
-                              "V2: Optimizes Camber and Thickness distributions directly.");
+                              "V1: Modifies Y-coordinates of base nodes (interpolating).\n"
+                              "V2: Optimizes Camber and Thickness distributions directly.\n"
+                              "V3: Modifies B-spline control points (approximating, smoother).");
     configLayout->addRow("Preset:", m_PresetCombo);
     inspectorLayout->addWidget(configGroup);
 

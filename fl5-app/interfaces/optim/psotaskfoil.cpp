@@ -390,6 +390,34 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
         pNewFoil->makeBaseFromCamberAndThickness();
         pNewFoil->rebuildPointSequenceFromBase();
     }
+    else if(m_Preset == PresetType::V3_BSpline_Control)
+    {
+        // V3: Create foil from modified B-spline control points
+        if(m_BaseBSpline.nCtrlPoints() < 4) { delete pNewFoil; return nullptr; }
+
+        // Copy the base B-spline and modify control point Y coordinates
+        BSpline workBSpline;
+        workBSpline.duplicate(m_BaseBSpline);
+
+        // Apply particle position values to control points
+        for(int i = 0; i < int(m_VarToBase.size()); ++i)
+        {
+            const int ctrlIndex = m_VarToBase[i];
+            Node2d pt = workBSpline.controlPoint(ctrlIndex);
+            pt.y = p.pos(i);
+            workBSpline.setCtrlPoint(ctrlIndex, pt);
+        }
+
+        // Generate the output curve from modified control points
+        workBSpline.updateSpline();
+        workBSpline.makeCurve();
+
+        // Create foil from B-spline output points
+        const std::vector<Node2d> &output = workBSpline.outputPts();
+        if(output.size() < 10) { delete pNewFoil; return nullptr; }
+
+        pNewFoil->setBaseNodes(output);
+    }
     else // V1
     {
         if(!m_OptimBaseNodes.empty())
@@ -525,7 +553,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         m_Variable.emplace_back("MaxThickness", std::max(0.01, m_BaseMaxThickness - delta), m_BaseMaxThickness + delta);
 
         // 3. Max Camber Position
-        delta = 0.1; 
+        delta = 0.1;
         m_Variable.emplace_back("XCamber", std::max(0.1, m_BaseXCamber - delta), std::min(0.9, m_BaseXCamber + delta));
 
         // 4. Max Thickness Position
@@ -535,7 +563,69 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         LeMetrics baseMetrics;
         if(computeLeMetrics(*m_pFoil, baseMetrics))
             applyMetrics(baseMetrics);
-        return; 
+        return;
+    }
+
+    if(m_Preset == PresetType::V3_BSpline_Control)
+    {
+        // V3: B-spline control point optimization
+        // Control points act as "magnets" pulling the curve towards them (approximating, not interpolating)
+        // This produces smoother results than directly moving foil base nodes
+
+        // Determine number of control points based on optimization points setting
+        m_BSplineCtrlPts = (m_OptimizationPoints > 0) ? m_OptimizationPoints : 20;
+        m_BSplineCtrlPts = std::max(8, std::min(40, m_BSplineCtrlPts)); // Clamp to reasonable range
+        m_BSplineDegree = 3; // Cubic B-spline
+        m_BSplineOutputPts = std::max(100, m_pFoil->nBaseNodes());
+
+        // Create B-spline approximation of the original foil
+        m_BaseBSpline.resetSpline();
+        if(!m_pFoil->makeApproxBSpline(m_BaseBSpline, m_BSplineDegree, m_BSplineCtrlPts, m_BSplineOutputPts))
+            return;
+
+        const int nCtrl = m_BaseBSpline.nCtrlPoints();
+        if(nCtrl < 4)
+            return;
+
+        // Find the LE control point (minimum x)
+        m_BSplineLECtrlIndex = 0;
+        double minX = m_BaseBSpline.controlPoint(0).x;
+        for(int i = 1; i < nCtrl; ++i)
+        {
+            if(m_BaseBSpline.controlPoint(i).x < minX)
+            {
+                minX = m_BaseBSpline.controlPoint(i).x;
+                m_BSplineLECtrlIndex = i;
+            }
+        }
+
+        // Create optimization variables for each control point Y (except TE endpoints and LE)
+        // The B-spline endpoints are clamped, so first and last control points coincide with TE
+        const double maxThickness = std::fabs(m_pFoil->maxThickness());
+        double delta = (yDelta > 0.0) ? yDelta : std::max(0.005, 0.3 * maxThickness);
+        delta *= m_BoundsScale;
+
+        m_VarToBase.clear();
+        m_Variable.reserve(nCtrl);
+        for(int i = 0; i < nCtrl; ++i)
+        {
+            // Skip TE endpoints (first and last) and LE control point
+            if(i == 0 || i == nCtrl - 1 || i == m_BSplineLECtrlIndex)
+                continue;
+
+            const double y = m_BaseBSpline.controlPoint(i).y;
+            const double minY = y - delta;
+            const double maxY = y + delta;
+
+            m_Variable.emplace_back("cp_" + std::to_string(i), minY, maxY);
+            m_VarToBase.push_back(i); // Maps variable index to control point index
+        }
+
+        // Compute LE metrics from the original foil for validation
+        LeMetrics baseMetrics;
+        if(computeLeMetrics(*m_pFoil, baseMetrics))
+            applyMetrics(baseMetrics);
+        return;
     }
 
     const int nBase = m_pFoil->nBaseNodes();
@@ -694,6 +784,34 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         workFoil.setThickness(xT, maxT);
         workFoil.makeBaseFromCamberAndThickness();
         workFoil.rebuildPointSequenceFromBase();
+    }
+    else if(m_Preset == PresetType::V3_BSpline_Control)
+    {
+        // V3: Create work foil from modified B-spline control points
+        if(m_BaseBSpline.nCtrlPoints() < 4) return;
+
+        // Copy the base B-spline and modify control point Y coordinates
+        BSpline workBSpline;
+        workBSpline.duplicate(m_BaseBSpline);
+
+        // Apply particle position values to control points
+        for(int i = 0; i < int(m_VarToBase.size()); ++i)
+        {
+            const int ctrlIndex = m_VarToBase[i];
+            Node2d pt = workBSpline.controlPoint(ctrlIndex);
+            pt.y = pParticle->pos(i);
+            workBSpline.setCtrlPoint(ctrlIndex, pt);
+        }
+
+        // Generate the output curve from modified control points
+        workBSpline.updateSpline();
+        workBSpline.makeCurve();
+
+        // Create foil from B-spline output points
+        const std::vector<Node2d> &output = workBSpline.outputPts();
+        if(output.size() < 10) return;
+
+        workFoil.setBaseNodes(output);
     }
     else // V1
     {

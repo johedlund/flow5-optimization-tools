@@ -26,6 +26,7 @@
 
 #include <interfaces/optim/psotask.h>
 
+#include <api/bspline.h>
 #include <node2d.h>
 
 class Foil;
@@ -51,7 +52,8 @@ class PSOTaskFoil : public PSOTask
         enum class PresetType
         {
             V1_Y_Only,
-            V2_Camber_Thickness
+            V2_Camber_Thickness,
+            V3_BSpline_Control  // B-spline control points (approximating, smoother)
         };
 
         enum class ObjectiveType
@@ -176,4 +178,11 @@ class PSOTaskFoil : public PSOTask
         bool m_BaseHasMonotonicLE{false};
         bool m_BaseHasPositiveThicknessLE{false};
         bool m_BaseHasSelfIntersection{false};
+
+        // Preset V3 (B-spline) members
+        BSpline m_BaseBSpline;           // B-spline approximation of the original foil
+        int m_BSplineDegree{3};          // Cubic B-spline (degree 3)
+        int m_BSplineCtrlPts{0};         // Number of control points
+        int m_BSplineOutputPts{200};     // Output resolution
+        int m_BSplineLECtrlIndex{0};     // Index of LE control point (fixed)
 };
