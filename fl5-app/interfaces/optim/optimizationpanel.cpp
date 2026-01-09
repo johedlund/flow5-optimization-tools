@@ -1035,6 +1035,12 @@ static const struct ConstraintDef {
     {"Cd",              0.02,   0.001,  0.5,   0.0,   false},  // 12 (max by default)
     {"Cm",             -0.1,    0.01,   0.5,  -0.5,   true},   // 13
     {"L/D",             20.0,   1.0,    200.0, 0.0,   true},   // 14
+    // Pressure gradient constraints (index 15-18)
+    // dCp/dx on upper surface - positive = adverse gradient (promotes separation)
+    {"dCp/dx @10%",     2.0,    0.1,    20.0, -10.0,  false},  // 15 (max by default)
+    {"dCp/dx @25%",     1.5,    0.1,    20.0, -10.0,  false},  // 16 (max by default)
+    {"dCp/dx @50%",     1.0,    0.1,    20.0, -10.0,  false},  // 17 (max by default)
+    {"dCp/dx @75%",     0.5,    0.1,    20.0, -10.0,  false},  // 18 (max by default)
 };
 static const int s_NumConstraintDefs = sizeof(s_ConstraintDefs) / sizeof(s_ConstraintDefs[0]);
 
@@ -1162,6 +1168,11 @@ double OptimizationPanel::getReferenceValue(int paramIndex) const
         case 12: return 0.01;                      // Cd (no ref)
         case 13: return -0.1;                      // Cm (no ref)
         case 14: return 50.0;                      // L/D (no ref)
+        // Pressure gradient - no static reference (needs analysis)
+        case 15: return 2.0;                       // dCp/dx @10%
+        case 16: return 1.5;                       // dCp/dx @25%
+        case 17: return 1.0;                       // dCp/dx @50%
+        case 18: return 0.5;                       // dCp/dx @75%
         default: return 0.0;
     }
 }
@@ -1231,6 +1242,19 @@ PSOTaskFoil::Constraints OptimizationPanel::buildConstraints() const
                 break;
             case 14: // L/D (only min makes sense)
                 c.minLD = {val, true};
+                break;
+            // Pressure gradient constraints (only max makes sense - limiting adverse gradient)
+            case 15: // dCp/dx @10%
+                c.maxDCpDxAt10 = {val, true};
+                break;
+            case 16: // dCp/dx @25%
+                c.maxDCpDxAt25 = {val, true};
+                break;
+            case 17: // dCp/dx @50%
+                c.maxDCpDxAt50 = {val, true};
+                break;
+            case 18: // dCp/dx @75%
+                c.maxDCpDxAt75 = {val, true};
                 break;
         }
     }

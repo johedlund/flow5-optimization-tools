@@ -105,6 +105,13 @@ class PSOTaskFoil : public PSOTask
             ConstraintVal maxCm;
             ConstraintVal minLD;
 
+            // Pressure gradient constraints (dCp/dx on upper surface)
+            // Limits adverse pressure gradient to prevent flow separation
+            ConstraintVal maxDCpDxAt10; // Max dCp/dx at 10% chord
+            ConstraintVal maxDCpDxAt25; // Max dCp/dx at 25% chord
+            ConstraintVal maxDCpDxAt50; // Max dCp/dx at 50% chord
+            ConstraintVal maxDCpDxAt75; // Max dCp/dx at 75% chord
+
             bool enabled{false};
         };
 

@@ -324,6 +324,60 @@ bool isFoilGeometryValid(const Foil &foil,
     return true;
 }
 
+// Calculate dCp/dx (pressure gradient) on the upper surface at a specific x/c position
+// Returns the gradient value, or NaN if calculation fails
+// Positive dCp/dx indicates adverse pressure gradient (pressure recovery)
+double upperSurfaceDCpDx(const Foil &foil, const OpPoint &opp, double xTarget)
+{
+    const int nPts = opp.nPoints();
+    if(nPts < 4)
+        return std::nan("");
+
+    // Find LE index (minimum x)
+    int leIndex = 0;
+    double minX = foil.xb(0);
+    for(int i = 1; i < nPts && i < foil.nBaseNodes(); ++i)
+    {
+        if(foil.xb(i) < minX)
+        {
+            minX = foil.xb(i);
+            leIndex = i;
+        }
+    }
+
+    // Upper surface goes from index 0 (TE) to leIndex (LE)
+    // x decreases from ~1 to ~0 on upper surface
+    // We need to find two consecutive points bracketing xTarget
+
+    // Search for the segment containing xTarget on upper surface
+    // Points are ordered: TE(x≈1) → LE(x≈0)
+    for(int i = 0; i < leIndex && i < nPts - 1; ++i)
+    {
+        const double x0 = foil.xb(i);
+        const double x1 = foil.xb(i + 1);
+
+        // Check if xTarget is between x0 and x1 (note: x0 > x1 on upper surface)
+        if((x0 >= xTarget && xTarget >= x1) || (x1 >= xTarget && xTarget >= x0))
+        {
+            const double dx = x0 - x1;
+            if(std::fabs(dx) < 1.0e-10)
+                continue;
+
+            const double cp0 = opp.m_Cpv[i];
+            const double cp1 = opp.m_Cpv[i + 1];
+            const double dCp = cp1 - cp0;
+
+            // dCp/dx: positive means Cp increasing with x (favorable on upper surface near LE)
+            // We want to detect adverse gradients where Cp increases as we go toward TE
+            // On upper surface going from LE to TE: x increases, Cp should increase (adverse)
+            // Return dCp/dx in the direction of increasing x (toward TE)
+            return dCp / dx;
+        }
+    }
+
+    return std::nan("");
+}
+
 } // namespace
 
 PSOTaskFoil::PSOTaskFoil()
@@ -1314,6 +1368,29 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             double ld = (std::abs(cd) > 1.0e-9) ? cl/cd : 0.0;
             if (m_Constraints.minLD.enabled && ld < m_Constraints.minLD.value)
                 aeroPenalty += std::pow(m_Constraints.minLD.value - ld, 2) * 10.0;
+
+            // Pressure gradient constraints (dCp/dx on upper surface)
+            // Positive values indicate adverse pressure gradient (promotes separation)
+            if (m_Constraints.maxDCpDxAt10.enabled) {
+                double dCpDx = upperSurfaceDCpDx(workFoil, *pOpp, 0.10);
+                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt10.value)
+                    aeroPenalty += std::pow(dCpDx - m_Constraints.maxDCpDxAt10.value, 2) * 100.0;
+            }
+            if (m_Constraints.maxDCpDxAt25.enabled) {
+                double dCpDx = upperSurfaceDCpDx(workFoil, *pOpp, 0.25);
+                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt25.value)
+                    aeroPenalty += std::pow(dCpDx - m_Constraints.maxDCpDxAt25.value, 2) * 100.0;
+            }
+            if (m_Constraints.maxDCpDxAt50.enabled) {
+                double dCpDx = upperSurfaceDCpDx(workFoil, *pOpp, 0.50);
+                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt50.value)
+                    aeroPenalty += std::pow(dCpDx - m_Constraints.maxDCpDxAt50.value, 2) * 100.0;
+            }
+            if (m_Constraints.maxDCpDxAt75.enabled) {
+                double dCpDx = upperSurfaceDCpDx(workFoil, *pOpp, 0.75);
+                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt75.value)
+                    aeroPenalty += std::pow(dCpDx - m_Constraints.maxDCpDxAt75.value, 2) * 100.0;
+            }
         }
 
         if (aeroPenalty > 0.0)
