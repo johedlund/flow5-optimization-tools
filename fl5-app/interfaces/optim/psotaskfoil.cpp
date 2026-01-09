@@ -572,11 +572,19 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         // Control points act as "magnets" pulling the curve towards them (approximating, not interpolating)
         // This produces smoother results than directly moving foil base nodes
 
+        const int nBase = m_pFoil->nBaseNodes();
+
+        // B-spline approximation requires: nCtrlPts < nBaseNodes
+        // Also need at least 8 control points for meaningful optimization
+        if(nBase < 9)
+            return; // Foil has too few base nodes for V3 optimization
+
         // Determine number of control points based on optimization points setting
-        m_BSplineCtrlPts = (m_OptimizationPoints > 0) ? m_OptimizationPoints : 20;
-        m_BSplineCtrlPts = std::max(8, std::min(40, m_BSplineCtrlPts)); // Clamp to reasonable range
+        // Must be strictly less than nBaseNodes for approximation to work
+        m_BSplineCtrlPts = (m_OptimizationPoints > 0) ? m_OptimizationPoints : std::min(20, nBase - 1);
+        m_BSplineCtrlPts = std::max(8, std::min(m_BSplineCtrlPts, nBase - 1));
         m_BSplineDegree = 3; // Cubic B-spline
-        m_BSplineOutputPts = std::max(100, m_pFoil->nBaseNodes());
+        m_BSplineOutputPts = std::max(100, nBase);
 
         // Create B-spline approximation of the original foil
         m_BaseBSpline.resetSpline();
