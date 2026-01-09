@@ -1212,9 +1212,22 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                 area += (workFoil.xb(i) * workFoil.yb(i+1) - workFoil.xb(i+1) * workFoil.yb(i));
             }
             area = std::fabs(0.5 * area); // Polygon area
-            
+
             if (area < m_Constraints.minArea.value)
                 penalty += std::pow(m_Constraints.minArea.value - area, 2) * 10000.0;
+        }
+
+        // Position-based thickness constraints (prevents flat trailing edges)
+        if (m_Constraints.minThickAt80.enabled) {
+            double t80 = workFoil.thickness(0.80);
+            if (t80 < m_Constraints.minThickAt80.value)
+                penalty += std::pow(m_Constraints.minThickAt80.value - t80, 2) * 5000.0;
+        }
+
+        if (m_Constraints.minThickAt90.enabled) {
+            double t90 = workFoil.thickness(0.90);
+            if (t90 < m_Constraints.minThickAt90.value)
+                penalty += std::pow(m_Constraints.minThickAt90.value - t90, 2) * 5000.0;
         }
 
         if (penalty > 0.0) {

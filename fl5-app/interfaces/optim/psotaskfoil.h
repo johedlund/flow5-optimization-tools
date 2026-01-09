@@ -92,6 +92,10 @@ class PSOTaskFoil : public PSOTask
             ConstraintVal maxXThickness;
             ConstraintVal minArea; // Cross-sectional area
 
+            // Position-based thickness constraints (prevents flat trailing edges)
+            ConstraintVal minThickAt80; // Min thickness at 80% chord
+            ConstraintVal minThickAt90; // Min thickness at 90% chord
+
             // Aerodynamic
             ConstraintVal minCl;
             ConstraintVal maxCl;
@@ -100,7 +104,7 @@ class PSOTaskFoil : public PSOTask
             ConstraintVal minCm;
             ConstraintVal maxCm;
             ConstraintVal minLD;
-            
+
             bool enabled{false};
         };
 

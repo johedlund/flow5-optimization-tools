@@ -698,13 +698,20 @@ void OptimizationPanel::customEvent(QEvent *event)
             m_StatusLabel->setText(QString("Iteration %1 / %2").arg(pEvent->iter()).arg(PSOTask::s_MaxIter));
             
             double bestFitness = pEvent->particle().fitness(0);
-            if(m_pFitnessCurve)
-                m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
             const PSOTaskFoil::ObjectiveType objType =
                 static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
             const double metric = objectiveMetricFromFitness(objType, bestFitness);
-            if(m_pMetricCurve)
-                m_pMetricCurve->appendPoint(pEvent->iter(), metric);
+
+            // Only add to plot if fitness is reasonable (not a penalty value)
+            // Penalty values are ~1e12 which make the plot unreadable
+            constexpr double MAX_PLOT_FITNESS = 1e6;
+            if(bestFitness < MAX_PLOT_FITNESS)
+            {
+                if(m_pFitnessCurve)
+                    m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
+                if(m_pMetricCurve)
+                    m_pMetricCurve->appendPoint(pEvent->iter(), metric);
+            }
 
             const QString metricLabel = objectiveMetricLabel(objType);
             const QString info = QString("Iter %1/%2\nFitness: %3\n%4: %5\nObjective: %6")
@@ -963,7 +970,7 @@ static const struct ConstraintDef {
     double minVal;
     bool defaultIsMin; // true = default to ≥, false = default to ≤
 } s_ConstraintDefs[] = {
-    // Geometric (index 0-8)
+    // Geometric (index 0-10)
     {"Thickness",       0.10,   0.001,  0.5,   0.0,   true},   // 0
     {"Camber",          0.02,   0.001,  0.2,  -0.2,   true},   // 1
     {"X Camber",        0.30,   0.01,   0.9,   0.0,   true},   // 2
@@ -973,11 +980,13 @@ static const struct ConstraintDef {
     {"Wiggliness",      1.0,    0.1,    100.0, 0.0,   false},  // 6 (max by default)
     {"Section Modulus", 0.001,  0.0001, 1.0,   0.0,   true},   // 7
     {"Area",            0.05,   0.001,  0.5,   0.0,   true},   // 8
-    // Aerodynamic (index 9-12)
-    {"Cl",              0.5,    0.1,    3.0,  -1.0,   true},   // 9
-    {"Cd",              0.02,   0.001,  0.5,   0.0,   false},  // 10 (max by default)
-    {"Cm",             -0.1,    0.01,   0.5,  -0.5,   true},   // 11
-    {"L/D",             20.0,   1.0,    200.0, 0.0,   true},   // 12
+    {"Thick @80%",      0.02,   0.001,  0.2,   0.0,   true},   // 9 - thickness at 80% chord
+    {"Thick @90%",      0.01,   0.001,  0.1,   0.0,   true},   // 10 - thickness at 90% chord
+    // Aerodynamic (index 11-14)
+    {"Cl",              0.5,    0.1,    3.0,  -1.0,   true},   // 11
+    {"Cd",              0.02,   0.001,  0.5,   0.0,   false},  // 12 (max by default)
+    {"Cm",             -0.1,    0.01,   0.5,  -0.5,   true},   // 13
+    {"L/D",             20.0,   1.0,    200.0, 0.0,   true},   // 14
 };
 static const int s_NumConstraintDefs = sizeof(s_ConstraintDefs) / sizeof(s_ConstraintDefs[0]);
 
@@ -1098,11 +1107,13 @@ double OptimizationPanel::getReferenceValue(int paramIndex) const
             return 0.12 * t * t;
         }
         case 8:  return m_pFoil->area();           // Area
+        case 9:  return m_pFoil->thickness(0.80); // Thick @80%
+        case 10: return m_pFoil->thickness(0.90); // Thick @90%
         // Aerodynamic parameters - no reference available (would need analysis)
-        case 9:  return 0.5;                       // Cl (no ref)
-        case 10: return 0.01;                      // Cd (no ref)
-        case 11: return -0.1;                      // Cm (no ref)
-        case 12: return 50.0;                      // L/D (no ref)
+        case 11: return 0.5;                       // Cl (no ref)
+        case 12: return 0.01;                      // Cd (no ref)
+        case 13: return -0.1;                      // Cm (no ref)
+        case 14: return 50.0;                      // L/D (no ref)
         default: return 0.0;
     }
 }
@@ -1152,19 +1163,25 @@ PSOTaskFoil::Constraints OptimizationPanel::buildConstraints() const
             case 8:  // Area (only min makes sense)
                 c.minArea = {val, true};
                 break;
-            case 9:  // Cl
+            case 9:  // Thick @80% (only min makes sense)
+                c.minThickAt80 = {val, true};
+                break;
+            case 10: // Thick @90% (only min makes sense)
+                c.minThickAt90 = {val, true};
+                break;
+            case 11: // Cl
                 if (isMin) c.minCl = {val, true};
                 else       c.maxCl = {val, true};
                 break;
-            case 10: // Cd
+            case 12: // Cd
                 if (isMin) c.minCd = {val, true};
                 else       c.maxCd = {val, true};
                 break;
-            case 11: // Cm
+            case 13: // Cm
                 if (isMin) c.minCm = {val, true};
                 else       c.maxCm = {val, true};
                 break;
-            case 12: // L/D (only min makes sense)
+            case 14: // L/D (only min makes sense)
                 c.minLD = {val, true};
                 break;
         }
