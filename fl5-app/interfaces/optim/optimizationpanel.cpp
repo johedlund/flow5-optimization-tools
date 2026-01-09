@@ -262,6 +262,12 @@ void OptimizationPanel::setupUI()
                                 "Values > 1.0 allow larger deformations from the original foil.\n"
                                 "Values < 1.0 constrain the optimization to the neighborhood of the original foil.");
     geoLayout->addRow("Bounds Scale:", m_sbBoundsScale);
+
+    m_cbSymmetric = new QCheckBox("Symmetric foil", this);
+    m_cbSymmetric->setToolTip("Force the foil to be symmetric (zero camber).\n"
+                              "Upper and lower surfaces will be mirrored about the chord line.");
+    m_cbSymmetric->setChecked(false);
+    geoLayout->addRow("", m_cbSymmetric);
     inspectorLayout->addWidget(geoGroup);
 
     // Run Parameters Group (New)
@@ -485,6 +491,7 @@ void OptimizationPanel::onRun()
 
     m_pTask->setOptimizationPoints(m_sbOptimPoints->value());
     m_pTask->setBoundsScale(m_sbBoundsScale->value());
+    m_pTask->setSymmetric(m_cbSymmetric->isChecked());
 
     m_pTask->initVariablesFromFoil();
 
@@ -702,8 +709,7 @@ void OptimizationPanel::customEvent(QEvent *event)
             m_pGraph->resetLimits();
             m_pGraphWt->update();
 
-            if (pEvent->iter() % 5 == 0)
-                updateCandidatePreview(pEvent->particle());
+            updateCandidatePreview(pEvent->particle());
         }
     }
     else if(event->type() == OPTIM_END_EVENT)
@@ -822,6 +828,15 @@ void OptimizationPanel::updateCandidatePreview(const Particle &particle)
     m_pPreviewFoil = pNewFoil;
 
     m_pSectionView->setBufferFoil(m_pPreviewFoil);
+
+    // Show foil properties instead of scale info
+    QString foilInfo = QString("Thickness: %1%\nCamber: %2%\nX-Thick: %3%\nX-Camber: %4%")
+        .arg(m_pPreviewFoil->maxThickness() * 100, 0, 'f', 2)
+        .arg(m_pPreviewFoil->maxCamber() * 100, 0, 'f', 2)
+        .arg(m_pPreviewFoil->xThickness() * 100, 0, 'f', 1)
+        .arg(m_pPreviewFoil->xCamber() * 100, 0, 'f', 1);
+    m_pSectionView->setOutputInfo(foilInfo);
+
     m_pSectionView->update();
 }
 

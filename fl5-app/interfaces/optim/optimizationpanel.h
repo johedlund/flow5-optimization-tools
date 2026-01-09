@@ -126,6 +126,7 @@ private:
     QComboBox *m_PresetCombo;
     QSpinBox *m_sbOptimPoints;
     QDoubleSpinBox *m_sbBoundsScale;
+    QCheckBox *m_cbSymmetric;
 
     // Run Parameters
     QSpinBox *m_sbMaxIter;

@@ -378,12 +378,25 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
 
     if(m_Preset == PresetType::V2_Camber_Thickness)
     {
-        if(p.dimension() < 4) { delete pNewFoil; return nullptr; }
+        double maxC, maxT, xC, xT;
 
-        double maxC = p.pos(0);
-        double maxT = p.pos(1);
-        double xC   = p.pos(2);
-        double xT   = p.pos(3);
+        if(m_bSymmetric)
+        {
+            // Symmetric: only [MaxThickness, XThickness] variables, camber forced to 0
+            if(p.dimension() < 2) { delete pNewFoil; return nullptr; }
+            maxC = 0.0;
+            maxT = p.pos(0);
+            xC = 0.3; // Fixed camber position (doesn't matter since camber = 0)
+            xT = p.pos(1);
+        }
+        else
+        {
+            if(p.dimension() < 4) { delete pNewFoil; return nullptr; }
+            maxC = p.pos(0);
+            maxT = p.pos(1);
+            xC   = p.pos(2);
+            xT   = p.pos(3);
+        }
 
         pNewFoil->setCamber(xC, maxC);
         pNewFoil->setThickness(xT, maxT);
@@ -393,7 +406,8 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
     else if(m_Preset == PresetType::V3_BSpline_Control)
     {
         // V3: Create foil from modified B-spline control points
-        if(m_BaseBSpline.nCtrlPoints() < 4) { delete pNewFoil; return nullptr; }
+        const int nCtrl = m_BaseBSpline.nCtrlPoints();
+        if(nCtrl < 4) { delete pNewFoil; return nullptr; }
 
         // Copy the base B-spline and modify control point Y coordinates
         BSpline workBSpline;
@@ -406,6 +420,30 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
             Node2d pt = workBSpline.controlPoint(ctrlIndex);
             pt.y = p.pos(i);
             workBSpline.setCtrlPoint(ctrlIndex, pt);
+        }
+
+        // For symmetric mode, mirror upper surface to lower surface
+        if(m_bSymmetric)
+        {
+            // LE is at m_BSplineLECtrlIndex
+            // Upper surface: indices 1 to LEindex-1
+            // Lower surface: indices LEindex+1 to nCtrl-2 (excluding last TE point)
+            // Mirror: upper[k] <-> lower[nCtrl-1-k] for same X position
+            for(int i = 1; i < m_BSplineLECtrlIndex; ++i)
+            {
+                const int mirrorIndex = nCtrl - 1 - i;
+                if(mirrorIndex > m_BSplineLECtrlIndex && mirrorIndex < nCtrl - 1)
+                {
+                    Node2d upperPt = workBSpline.controlPoint(i);
+                    Node2d lowerPt = workBSpline.controlPoint(mirrorIndex);
+                    lowerPt.y = -upperPt.y; // Mirror Y
+                    workBSpline.setCtrlPoint(mirrorIndex, lowerPt);
+                }
+            }
+            // Set LE to y=0 for perfect symmetry
+            Node2d lePt = workBSpline.controlPoint(m_BSplineLECtrlIndex);
+            lePt.y = 0.0;
+            workBSpline.setCtrlPoint(m_BSplineLECtrlIndex, lePt);
         }
 
         // Generate the output curve from modified control points
@@ -423,10 +461,43 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
         if(!m_OptimBaseNodes.empty())
             pNewFoil->setBaseNodes(m_OptimBaseNodes);
 
+        // Find LE index in the optimized base nodes
+        int leOptimIndex = 0;
+        const int nOptim = int(m_OptimBaseNodes.size());
+        double minX = m_OptimBaseNodes.empty() ? 0.0 : m_OptimBaseNodes[0].x;
+        for(int i = 1; i < nOptim; ++i)
+        {
+            if(m_OptimBaseNodes[i].x < minX)
+            {
+                minX = m_OptimBaseNodes[i].x;
+                leOptimIndex = i;
+            }
+        }
+
+        // Apply particle position values to upper surface
         for(int i=0; i<int(m_VarToBase.size()); ++i)
         {
             const int baseIndex = m_VarToBase[i];
             pNewFoil->setBaseNode(baseIndex, pNewFoil->xb(baseIndex), p.pos(i));
+        }
+
+        // For symmetric mode, mirror upper surface to lower surface
+        if(m_bSymmetric && nOptim > 2)
+        {
+            // Upper surface: indices 1 to leOptimIndex-1
+            // Lower surface: indices leOptimIndex+1 to nOptim-2
+            // Mirror: upper[k] <-> lower[nOptim-1-k]
+            for(int i = 1; i < leOptimIndex; ++i)
+            {
+                const int mirrorIndex = nOptim - 1 - i;
+                if(mirrorIndex > leOptimIndex && mirrorIndex < nOptim - 1)
+                {
+                    double y = pNewFoil->yb(i);
+                    pNewFoil->setBaseNode(mirrorIndex, pNewFoil->xb(mirrorIndex), -y);
+                }
+            }
+            // Set LE to y=0 for perfect symmetry
+            pNewFoil->setBaseNode(leOptimIndex, pNewFoil->xb(leOptimIndex), 0.0);
         }
     }
 
@@ -544,21 +615,37 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         m_BaseXCamber = m_pFoil->xCamber();
         m_BaseXThickness = m_pFoil->xThickness();
 
-        // 1. Max Camber
-        double delta = std::max(0.005, std::fabs(m_BaseMaxCamber) * 0.5);
-        m_Variable.emplace_back("MaxCamber", m_BaseMaxCamber - delta, m_BaseMaxCamber + delta);
+        double delta;
 
-        // 2. Max Thickness
-        delta = std::max(0.005, std::fabs(m_BaseMaxThickness) * 0.5);
-        m_Variable.emplace_back("MaxThickness", std::max(0.01, m_BaseMaxThickness - delta), m_BaseMaxThickness + delta);
+        if(m_bSymmetric)
+        {
+            // Symmetric: Only optimize thickness (camber forced to zero)
+            // 1. Max Thickness
+            delta = std::max(0.005, std::fabs(m_BaseMaxThickness) * 0.5);
+            m_Variable.emplace_back("MaxThickness", std::max(0.01, m_BaseMaxThickness - delta), m_BaseMaxThickness + delta);
 
-        // 3. Max Camber Position
-        delta = 0.1;
-        m_Variable.emplace_back("XCamber", std::max(0.1, m_BaseXCamber - delta), std::min(0.9, m_BaseXCamber + delta));
+            // 2. Max Thickness Position
+            delta = 0.1;
+            m_Variable.emplace_back("XThickness", std::max(0.1, m_BaseXThickness - delta), std::min(0.9, m_BaseXThickness + delta));
+        }
+        else
+        {
+            // 1. Max Camber
+            delta = std::max(0.005, std::fabs(m_BaseMaxCamber) * 0.5);
+            m_Variable.emplace_back("MaxCamber", m_BaseMaxCamber - delta, m_BaseMaxCamber + delta);
 
-        // 4. Max Thickness Position
-        delta = 0.1;
-        m_Variable.emplace_back("XThickness", std::max(0.1, m_BaseXThickness - delta), std::min(0.9, m_BaseXThickness + delta));
+            // 2. Max Thickness
+            delta = std::max(0.005, std::fabs(m_BaseMaxThickness) * 0.5);
+            m_Variable.emplace_back("MaxThickness", std::max(0.01, m_BaseMaxThickness - delta), m_BaseMaxThickness + delta);
+
+            // 3. Max Camber Position
+            delta = 0.1;
+            m_Variable.emplace_back("XCamber", std::max(0.1, m_BaseXCamber - delta), std::min(0.9, m_BaseXCamber + delta));
+
+            // 4. Max Thickness Position
+            delta = 0.1;
+            m_Variable.emplace_back("XThickness", std::max(0.1, m_BaseXThickness - delta), std::min(0.9, m_BaseXThickness + delta));
+        }
 
         LeMetrics baseMetrics;
         if(computeLeMetrics(*m_pFoil, baseMetrics))
@@ -615,18 +702,36 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 
         m_VarToBase.clear();
         m_Variable.reserve(nCtrl);
-        for(int i = 0; i < nCtrl; ++i)
+
+        if(m_bSymmetric)
         {
-            // Skip TE endpoints (first and last) and LE control point
-            if(i == 0 || i == nCtrl - 1 || i == m_BSplineLECtrlIndex)
-                continue;
+            // Symmetric: Only optimize upper surface (indices 1 to LEindex-1)
+            // Lower surface will be mirrored in createOptimizedFoil
+            for(int i = 1; i < m_BSplineLECtrlIndex; ++i)
+            {
+                const double y = m_BaseBSpline.controlPoint(i).y;
+                const double minY = y - delta;
+                const double maxY = y + delta;
 
-            const double y = m_BaseBSpline.controlPoint(i).y;
-            const double minY = y - delta;
-            const double maxY = y + delta;
+                m_Variable.emplace_back("cp_" + std::to_string(i), minY, maxY);
+                m_VarToBase.push_back(i);
+            }
+        }
+        else
+        {
+            for(int i = 0; i < nCtrl; ++i)
+            {
+                // Skip TE endpoints (first and last) and LE control point
+                if(i == 0 || i == nCtrl - 1 || i == m_BSplineLECtrlIndex)
+                    continue;
 
-            m_Variable.emplace_back("cp_" + std::to_string(i), minY, maxY);
-            m_VarToBase.push_back(i); // Maps variable index to control point index
+                const double y = m_BaseBSpline.controlPoint(i).y;
+                const double minY = y - delta;
+                const double maxY = y + delta;
+
+                m_Variable.emplace_back("cp_" + std::to_string(i), minY, maxY);
+                m_VarToBase.push_back(i); // Maps variable index to control point index
+            }
         }
 
         // Compute LE metrics from the original foil for validation
@@ -719,28 +824,46 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 
     const int nOptim = int(m_OptimBaseNodes.size());
     m_Variable.reserve(nOptim);
-    for(int i=0; i<nOptim; ++i)
+
+    if(m_bSymmetric)
     {
-        if(i == 0 || i == nOptim-1 || i == leOptimIndex)
-            continue;
+        // Symmetric: Only optimize upper surface (indices 1 to leOptimIndex-1)
+        // Lower surface will be mirrored in createOptimizedFoil
+        for(int i = 1; i < leOptimIndex; ++i)
+        {
+            const double y = m_OptimBaseNodes[i].y;
+            const double minY = y - delta;
+            const double maxY = y + delta;
 
-        const double y = m_OptimBaseNodes[i].y;
-        const double minY = y - delta;
-        const double maxY = y + delta;
-
-        m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
-        m_VarToBase.push_back(i);
+            m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
+            m_VarToBase.push_back(i);
+        }
     }
-
-    if(m_VarToBase.empty() && nOptim > 2)
+    else
     {
-        int mid = nOptim/2;
-        if(mid == 0 || mid == nOptim-1 || mid == leOptimIndex)
-            mid = (mid+1 < nOptim-1) ? mid+1 : 1;
+        for(int i=0; i<nOptim; ++i)
+        {
+            if(i == 0 || i == nOptim-1 || i == leOptimIndex)
+                continue;
 
-        const double y = m_OptimBaseNodes[mid].y;
-        m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[mid]), y - delta, y + delta);
-        m_VarToBase.push_back(mid);
+            const double y = m_OptimBaseNodes[i].y;
+            const double minY = y - delta;
+            const double maxY = y + delta;
+
+            m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
+            m_VarToBase.push_back(i);
+        }
+
+        if(m_VarToBase.empty() && nOptim > 2)
+        {
+            int mid = nOptim/2;
+            if(mid == 0 || mid == nOptim-1 || mid == leOptimIndex)
+                mid = (mid+1 < nOptim-1) ? mid+1 : 1;
+
+            const double y = m_OptimBaseNodes[mid].y;
+            m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[mid]), y - delta, y + delta);
+            m_VarToBase.push_back(mid);
+        }
     }
 
     if(!m_OptimBaseNodes.empty())

@@ -112,6 +112,8 @@ class PSOTaskFoil : public PSOTask
         void setConstraints(Constraints const &c) {m_Constraints = c;}
         void setOptimizationPoints(int n) {m_OptimizationPoints = n;}
         void setBoundsScale(double scale) {m_BoundsScale = scale;}
+        void setSymmetric(bool bSym) {m_bSymmetric = bSym;}
+        bool isSymmetric() const {return m_bSymmetric;}
 
         void initVariablesFromFoil(double yDelta=0.0);
         void setPreset(PresetType preset) {m_Preset = preset;}
@@ -163,6 +165,7 @@ class PSOTaskFoil : public PSOTask
         double m_InducedAlpha{0.0};
         int m_OptimizationPoints{0};
         double m_BoundsScale{1.0};
+        bool m_bSymmetric{false};
         std::vector<Node2d> m_OptimBaseNodes;
         std::vector<int> m_OptimBaseIndex;
         std::vector<int> m_VarToBase;
