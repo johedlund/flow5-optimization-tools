@@ -926,37 +926,31 @@ void OptimizationPanel::populateSectionList(PlaneXfl *pPlane, int wingIndex)
     m_SectionCombo->blockSignals(false);
 }
 
-// Constraint parameter definitions: name, field mapping, default, step, max, min-allowed
+// Constraint parameter definitions: name, default, step, max, min-allowed
+// The operator (≥/≤) determines whether it's a min or max constraint
 static const struct ConstraintDef {
     const char *name;
-    int fieldIndex; // 0-20 mapping to Constraints fields
     double defaultVal;
     double step;
     double maxVal;
     double minVal;
+    bool defaultIsMin; // true = default to ≥, false = default to ≤
 } s_ConstraintDefs[] = {
-    // Geometric
-    {"Min Thickness", 0, 0.08, 0.001, 0.5, 0.0},
-    {"Max Thickness", 1, 0.15, 0.001, 0.5, 0.0},
-    {"Min LE Radius", 2, 0.01, 0.001, 0.1, 0.0},
-    {"Min TE Gap", 3, 0.002, 0.0005, 0.05, 0.0},
-    {"Max Wiggliness", 4, 1.0, 0.1, 100.0, 0.0},
-    {"Min Section Mod.", 5, 0.001, 0.0001, 1.0, 0.0},
-    {"Min Camber", 6, 0.0, 0.001, 0.2, -0.2},
-    {"Max Camber", 7, 0.1, 0.001, 0.2, -0.2},
-    {"Min X Camber", 8, 0.1, 0.05, 0.9, 0.0},
-    {"Max X Camber", 9, 0.5, 0.05, 0.9, 0.0},
-    {"Min X Thickness", 10, 0.1, 0.05, 0.9, 0.0},
-    {"Max X Thickness", 11, 0.5, 0.05, 0.9, 0.0},
-    {"Min Area", 12, 0.01, 0.001, 0.5, 0.0},
-    // Aerodynamic
-    {"Min Cl", 13, 0.0, 0.1, 3.0, -1.0},
-    {"Max Cl", 14, 1.5, 0.1, 3.0, -1.0},
-    {"Min Cd", 15, 0.0, 0.0001, 0.1, 0.0},
-    {"Max Cd", 16, 0.02, 0.001, 0.5, 0.0},
-    {"Min Cm", 17, -0.5, 0.01, 0.5, -0.5},
-    {"Max Cm", 18, 0.0, 0.01, 0.5, -0.5},
-    {"Min L/D", 19, 10.0, 1.0, 200.0, 0.0},
+    // Geometric (index 0-8)
+    {"Thickness",       0.10,   0.001,  0.5,   0.0,   true},   // 0
+    {"Camber",          0.02,   0.001,  0.2,  -0.2,   true},   // 1
+    {"X Camber",        0.30,   0.01,   0.9,   0.0,   true},   // 2
+    {"X Thickness",     0.30,   0.01,   0.9,   0.0,   true},   // 3
+    {"LE Radius",       0.01,   0.001,  0.1,   0.0,   true},   // 4
+    {"TE Gap",          0.002,  0.0005, 0.05,  0.0,   true},   // 5
+    {"Wiggliness",      1.0,    0.1,    100.0, 0.0,   false},  // 6 (max by default)
+    {"Section Modulus", 0.001,  0.0001, 1.0,   0.0,   true},   // 7
+    {"Area",            0.05,   0.001,  0.5,   0.0,   true},   // 8
+    // Aerodynamic (index 9-12)
+    {"Cl",              0.5,    0.1,    3.0,  -1.0,   true},   // 9
+    {"Cd",              0.02,   0.001,  0.5,   0.0,   false},  // 10 (max by default)
+    {"Cm",             -0.1,    0.01,   0.5,  -0.5,   true},   // 11
+    {"L/D",             20.0,   1.0,    200.0, 0.0,   true},   // 12
 };
 static const int s_NumConstraintDefs = sizeof(s_ConstraintDefs) / sizeof(s_ConstraintDefs[0]);
 
@@ -973,20 +967,25 @@ void OptimizationPanel::addConstraintRow()
     for (int i = 0; i < s_NumConstraintDefs; ++i) {
         row->paramCombo->addItem(s_ConstraintDefs[i].name, i);
     }
-    row->paramCombo->setFixedWidth(120);
+    row->paramCombo->setFixedWidth(100);
     layout->addWidget(row->paramCombo);
 
     // Operator combo
     row->opCombo = new QComboBox(this);
-    row->opCombo->addItem("≥", 0);  // Greater or equal (for min constraints)
-    row->opCombo->addItem("≤", 1);  // Less or equal (for max constraints)
+    row->opCombo->addItem("≥", 0);  // Greater or equal (min constraint)
+    row->opCombo->addItem("≤", 1);  // Less or equal (max constraint)
     row->opCombo->setFixedWidth(40);
     layout->addWidget(row->opCombo);
+
+    // Reference checkbox
+    row->refCheck = new QCheckBox("Ref", this);
+    row->refCheck->setToolTip("Use base foil's value as reference");
+    layout->addWidget(row->refCheck);
 
     // Value spinbox
     row->valueSpin = new QDoubleSpinBox(this);
     row->valueSpin->setDecimals(4);
-    row->valueSpin->setFixedWidth(80);
+    row->valueSpin->setFixedWidth(70);
     layout->addWidget(row->valueSpin);
 
     // Delete button
@@ -998,6 +997,8 @@ void OptimizationPanel::addConstraintRow()
     // Connect signals
     connect(row->paramCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this, row](int) { onParamChanged(row); });
+    connect(row->refCheck, &QCheckBox::toggled,
+            this, [this, row](bool checked) { onRefCheckChanged(row, checked); });
     connect(row->deleteBtn, &QPushButton::clicked,
             this, [this, row]() { removeConstraintRow(row); });
 
@@ -1029,14 +1030,54 @@ void OptimizationPanel::onParamChanged(ConstraintRow *row)
     const auto &def = s_ConstraintDefs[defIdx];
     row->valueSpin->setRange(def.minVal, def.maxVal);
     row->valueSpin->setSingleStep(def.step);
-    row->valueSpin->setValue(def.defaultVal);
 
-    // Auto-select operator based on constraint name
-    QString name = def.name;
-    if (name.startsWith("Min"))
-        row->opCombo->setCurrentIndex(0); // ≥
-    else if (name.startsWith("Max"))
-        row->opCombo->setCurrentIndex(1); // ≤
+    // Set default operator based on parameter type
+    row->opCombo->setCurrentIndex(def.defaultIsMin ? 0 : 1);
+
+    // Reset reference checkbox and set default value
+    row->refCheck->setChecked(false);
+    row->valueSpin->setEnabled(true);
+    row->valueSpin->setValue(def.defaultVal);
+}
+
+void OptimizationPanel::onRefCheckChanged(ConstraintRow *row, bool checked)
+{
+    if (!row || !row->paramCombo || !row->valueSpin) return;
+
+    int defIdx = row->paramCombo->currentData().toInt();
+    if (checked) {
+        double refVal = getReferenceValue(defIdx);
+        row->valueSpin->setValue(refVal);
+        row->valueSpin->setEnabled(false);
+    } else {
+        row->valueSpin->setEnabled(true);
+    }
+}
+
+double OptimizationPanel::getReferenceValue(int paramIndex) const
+{
+    if (!m_pFoil) return 0.0;
+
+    switch (paramIndex) {
+        case 0:  return m_pFoil->maxThickness();   // Thickness
+        case 1:  return m_pFoil->maxCamber();      // Camber
+        case 2:  return m_pFoil->xCamber();        // X Camber
+        case 3:  return m_pFoil->xThickness();     // X Thickness
+        case 4:  return m_pFoil->LERadius();       // LE Radius
+        case 5:  return m_pFoil->TEGap();          // TE Gap
+        case 6:  return m_pFoil->wiggliness();     // Wiggliness
+        case 7: {                                   // Section Modulus (approx)
+            double t = m_pFoil->maxThickness();
+            return 0.12 * t * t;
+        }
+        case 8:  return m_pFoil->area();           // Area
+        // Aerodynamic parameters - no reference available (would need analysis)
+        case 9:  return 0.5;                       // Cl (no ref)
+        case 10: return 0.01;                      // Cd (no ref)
+        case 11: return -0.1;                      // Cm (no ref)
+        case 12: return 50.0;                      // L/D (no ref)
+        default: return 0.0;
+    }
 }
 
 PSOTaskFoil::Constraints OptimizationPanel::buildConstraints() const
@@ -1045,33 +1086,60 @@ PSOTaskFoil::Constraints OptimizationPanel::buildConstraints() const
     c.enabled = !m_ConstraintRows.isEmpty();
 
     for (const auto *row : m_ConstraintRows) {
-        if (!row || !row->paramCombo || !row->valueSpin) continue;
+        if (!row || !row->paramCombo || !row->valueSpin || !row->opCombo) continue;
 
-        int defIdx = row->paramCombo->currentData().toInt();
+        int paramIdx = row->paramCombo->currentData().toInt();
         double val = row->valueSpin->value();
+        bool isMin = (row->opCombo->currentIndex() == 0); // 0 = ≥, 1 = ≤
 
-        // Map field index to constraint struct member
-        switch (defIdx) {
-            case 0:  c.minThickness = {val, true}; break;
-            case 1:  c.maxThickness = {val, true}; break;
-            case 2:  c.minLERadius = {val, true}; break;
-            case 3:  c.minTEThickness = {val, true}; break;
-            case 4:  c.maxWiggliness = {val, true}; break;
-            case 5:  c.minSectionModulus = {val, true}; break;
-            case 6:  c.minCamber = {val, true}; break;
-            case 7:  c.maxCamber = {val, true}; break;
-            case 8:  c.minXCamber = {val, true}; break;
-            case 9:  c.maxXCamber = {val, true}; break;
-            case 10: c.minXThickness = {val, true}; break;
-            case 11: c.maxXThickness = {val, true}; break;
-            case 12: c.minArea = {val, true}; break;
-            case 13: c.minCl = {val, true}; break;
-            case 14: c.maxCl = {val, true}; break;
-            case 15: c.minCd = {val, true}; break;
-            case 16: c.maxCd = {val, true}; break;
-            case 17: c.minCm = {val, true}; break;
-            case 18: c.maxCm = {val, true}; break;
-            case 19: c.minLD = {val, true}; break;
+        // Map parameter + operator to constraint struct member
+        switch (paramIdx) {
+            case 0:  // Thickness
+                if (isMin) c.minThickness = {val, true};
+                else       c.maxThickness = {val, true};
+                break;
+            case 1:  // Camber
+                if (isMin) c.minCamber = {val, true};
+                else       c.maxCamber = {val, true};
+                break;
+            case 2:  // X Camber
+                if (isMin) c.minXCamber = {val, true};
+                else       c.maxXCamber = {val, true};
+                break;
+            case 3:  // X Thickness
+                if (isMin) c.minXThickness = {val, true};
+                else       c.maxXThickness = {val, true};
+                break;
+            case 4:  // LE Radius (only min makes sense)
+                c.minLERadius = {val, true};
+                break;
+            case 5:  // TE Gap (only min makes sense)
+                c.minTEThickness = {val, true};
+                break;
+            case 6:  // Wiggliness (only max makes sense)
+                c.maxWiggliness = {val, true};
+                break;
+            case 7:  // Section Modulus (only min makes sense)
+                c.minSectionModulus = {val, true};
+                break;
+            case 8:  // Area (only min makes sense)
+                c.minArea = {val, true};
+                break;
+            case 9:  // Cl
+                if (isMin) c.minCl = {val, true};
+                else       c.maxCl = {val, true};
+                break;
+            case 10: // Cd
+                if (isMin) c.minCd = {val, true};
+                else       c.maxCd = {val, true};
+                break;
+            case 11: // Cm
+                if (isMin) c.minCm = {val, true};
+                else       c.maxCm = {val, true};
+                break;
+            case 12: // L/D (only min makes sense)
+                c.minLD = {val, true};
+                break;
         }
     }
 

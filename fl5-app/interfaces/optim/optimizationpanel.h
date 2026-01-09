@@ -55,6 +55,7 @@ struct ConstraintRow {
     QWidget *widget{nullptr};
     QComboBox *paramCombo{nullptr};
     QComboBox *opCombo{nullptr};
+    QCheckBox *refCheck{nullptr};
     QDoubleSpinBox *valueSpin{nullptr};
     QPushButton *deleteBtn{nullptr};
 };
@@ -99,6 +100,8 @@ private:
     void addConstraintRow();
     void removeConstraintRow(ConstraintRow *row);
     void onParamChanged(ConstraintRow *row);
+    void onRefCheckChanged(ConstraintRow *row, bool checked);
+    double getReferenceValue(int paramIndex) const;
     PSOTaskFoil::Constraints buildConstraints() const;
 
     Foil *m_pFoil{nullptr};
