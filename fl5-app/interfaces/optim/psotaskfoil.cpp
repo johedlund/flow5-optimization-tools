@@ -299,14 +299,8 @@ bool isFoilGeometryValid(const Foil &foil,
 
     if(std::isfinite(baseLERadius) && baseLERadius > 0.0)
     {
-        const double r = foil.LERadius();
-        // LERadius() returns 1e6 for flat/degenerate LE (curvature < 1e-6).
-        // Reject if: NaN/Inf, unreasonably large (degenerate), or below minimum.
-        const double maxReasonableRadius = 1.0;  // 100% chord is clearly degenerate
-        if(!std::isfinite(r) || r > maxReasonableRadius)
-            return false;
         const double minRadius = std::max(baseLERadius * 0.25, chord * 1.0e-4);
-        if(r < minRadius)
+        if(foil.LERadius() < minRadius)
             return false;
     }
 
@@ -1212,17 +1206,8 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
 
         if (m_Constraints.minLERadius.enabled && m_Constraints.minLERadius.value > 0.0) {
             double r = workFoil.LERadius();
-            // LERadius() returns 1e6 for flat/degenerate LE (curvature < 1e-6).
-            // A realistic LE radius for airfoils is < 1.0 (100% chord).
-            // Treat invalid/unreasonable values as constraint violations.
-            const double maxReasonableRadius = 1.0;
-            if (!std::isfinite(r) || r > maxReasonableRadius) {
-                // Invalid geometry - apply full penalty as if radius were 0
-                penalty += std::pow(m_Constraints.minLERadius.value, 2) * 50000.0;
-            } else if (r < m_Constraints.minLERadius.value) {
-                // Valid radius but below constraint
+            if (r < m_Constraints.minLERadius.value)
                 penalty += std::pow(m_Constraints.minLERadius.value - r, 2) * 50000.0;
-            }
         }
 
         if (m_Constraints.maxWiggliness.enabled && m_Constraints.maxWiggliness.value > 0.0) {
