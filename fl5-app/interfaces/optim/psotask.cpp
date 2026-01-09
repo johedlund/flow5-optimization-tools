@@ -31,9 +31,15 @@
 
 int    PSOTask::s_ArchiveSize     = 10;
 double PSOTask::s_InertiaWeight   = 0.3;
+double PSOTask::s_InertiaStart    = 0.9;   // High for exploration
+double PSOTask::s_InertiaEnd      = 0.4;   // Low for exploitation
+bool   PSOTask::s_bAdaptiveInertia = true;
 double PSOTask::s_CognitiveWeight = 0.7;
 double PSOTask::s_SocialWeight    = 0.7;
 double PSOTask::s_ProbRegenerate  = 0.07;
+double PSOTask::s_VelocityClamp   = 0.5;   // Max velocity = 50% of range
+int    PSOTask::s_LocalSearchInterval = 10; // Every 10 iterations
+double PSOTask::s_LocalSearchRadius   = 0.05; // 5% of range
 
 int  PSOTask::s_PopSize           = 17;
 int  PSOTask::s_MaxIter           = 30;
@@ -139,9 +145,15 @@ void PSOTask::restoreDefaults()
     s_ArchiveSize       = 10;
     s_MaxIter           = 100;
     s_InertiaWeight     = 0.3;
+    s_InertiaStart      = 0.9;
+    s_InertiaEnd        = 0.4;
+    s_bAdaptiveInertia  = true;
     s_CognitiveWeight   = 0.7;
     s_SocialWeight      = 0.7;
     s_ProbRegenerate    = 0.05;
+    s_VelocityClamp     = 0.5;
+    s_LocalSearchInterval = 10;
+    s_LocalSearchRadius = 0.05;
 }
 
 
@@ -307,6 +319,12 @@ void PSOTask::onIteration()
 
     makeParetoFrontier();
 
+    // Periodic local search to refine best solutions
+    if (s_LocalSearchInterval > 0 && m_Iter % s_LocalSearchInterval == 0) {
+        localSearchBest();
+        makeParetoFrontier(); // Update Pareto after local search
+    }
+
     // select the best particle defined as the one which minimizes the normalized Manhattan distance to each objective
     int iBest0 = 0;
     double dist2 = LARGEVALUE;
@@ -399,6 +417,14 @@ void PSOTask::moveParticle(Particle *pParticle) const
     // select a random best in the personal bests
     ipbest = QRandomGenerator::global()->bounded(pParticle->nBest());
 
+    // Compute inertia weight (adaptive or fixed)
+    double inertia = s_InertiaWeight;
+    if (s_bAdaptiveInertia && s_MaxIter > 1) {
+        // Linear decrease from s_InertiaStart to s_InertiaEnd over iterations
+        double t = double(m_Iter) / double(s_MaxIter - 1);
+        inertia = s_InertiaStart - t * (s_InertiaStart - s_InertiaEnd);
+    }
+
     // update the velocity
     for(int j=0; j<pParticle->dimension(); j++)
     {
@@ -414,9 +440,15 @@ void PSOTask::moveParticle(Particle *pParticle) const
         r1 = QRandomGenerator::global()->bounded(1.0);
         r2 = QRandomGenerator::global()->bounded(1.0);
 
-        vel = s_InertiaWeight * pParticle->vel(j) +
+        vel = inertia * pParticle->vel(j) +
               s_CognitiveWeight * r1 * (pParticle->bestPos(ipbest, j) - pParticle->pos(j)) +
               s_SocialWeight    * r2 * (globalbest.pos(j)             - pParticle->pos(j));
+
+        // Velocity clamping to prevent overshooting
+        if (s_VelocityClamp > 0.0) {
+            double vmax = s_VelocityClamp * deltap;
+            vel = std::max(-vmax, std::min(vmax, vel));
+        }
 
         //test if the velocity moves the particle off-bound and if true bounce it in the opposite direction
         newpos = pParticle->pos(j) + vel;
@@ -437,6 +469,87 @@ void PSOTask::moveParticle(Particle *pParticle) const
     for(int i=0; i<m_Objective.size(); i++)  pParticle->setError(i, error(pParticle, i));
 
     pParticle->updateBest();
+}
+
+
+void PSOTask::localSearchBest()
+{
+    // Pattern search around the best particle in the Pareto frontier
+    // This helps refine solutions in later iterations
+    if (m_Pareto.isEmpty() || s_LocalSearchRadius <= 0.0) return;
+
+    // Find the best particle (minimum normalized distance to objectives)
+    int iBest = 0;
+    double minDist = LARGEVALUE;
+    for (int i = 0; i < m_Pareto.size(); i++) {
+        double dist = 0.0;
+        for (int iobj = 0; iobj < m_Objective.size(); iobj++) {
+            if (fabs(m_Objective.at(iobj).m_MaxError) > 1.0e-6) {
+                double e = m_Pareto.at(i).error(iobj) / m_Objective.at(iobj).m_MaxError;
+                dist += e * e;
+            }
+        }
+        if (dist < minDist) {
+            minDist = dist;
+            iBest = i;
+        }
+    }
+
+    Particle best = m_Pareto.at(iBest);
+    Particle trial = best;
+
+    // Try perturbations in each dimension
+    for (int j = 0; j < best.dimension(); j++) {
+        if (m_Status == xfl::CANCELLED) return;
+
+        double deltap = m_Variable.at(j).m_Max - m_Variable.at(j).m_Min;
+        if (deltap < DELTAVAR) continue;
+
+        double step = s_LocalSearchRadius * deltap;
+        double origPos = best.pos(j);
+
+        // Try positive step
+        trial.setPos(j, std::min(origPos + step, m_Variable.at(j).m_Max));
+        calcFitness(&trial);
+        for (int iobj = 0; iobj < m_Objective.size(); iobj++)
+            trial.setError(iobj, error(&trial, iobj));
+
+        if (trial.dominates(&best)) {
+            best = trial;
+            best.updateBest();
+        } else {
+            // Try negative step
+            trial.setPos(j, std::max(origPos - step, m_Variable.at(j).m_Min));
+            calcFitness(&trial);
+            for (int iobj = 0; iobj < m_Objective.size(); iobj++)
+                trial.setError(iobj, error(&trial, iobj));
+
+            if (trial.dominates(&best)) {
+                best = trial;
+                best.updateBest();
+            } else {
+                trial.setPos(j, origPos); // restore
+            }
+        }
+    }
+
+    // Replace the worst particle in swarm with the improved best
+    if (best.dominates(&m_Pareto.at(iBest))) {
+        // Find worst particle in swarm (highest total error)
+        int iWorst = 0;
+        double maxErr = 0.0;
+        for (int i = 0; i < m_Swarm.size(); i++) {
+            double err = 0.0;
+            for (int iobj = 0; iobj < m_Objective.size(); iobj++)
+                err += m_Swarm.at(i).error(iobj);
+            if (err > maxErr) {
+                maxErr = err;
+                iWorst = i;
+            }
+        }
+        m_Swarm[iWorst] = best;
+        outputMsg(QString("Local search improved solution\n"));
+    }
 }
 
 

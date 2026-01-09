@@ -131,6 +131,7 @@ class PSOTask : public QObject
     private:
         virtual void makeRandomParticle(Particle *pParticle) const;
         void moveParticle(Particle *pParticle) const;
+        void localSearchBest();
 
         void postIterEvent(int iBest);
         void postPSOEvent(int iBest);
@@ -174,10 +175,16 @@ class PSOTask : public QObject
         static int  s_MaxIter;
         static bool s_bMultiThreaded;
         static int    s_ArchiveSize;
-        static double s_InertiaWeight;
+        static double s_InertiaWeight;      // Used as inertia when adaptive=false
+        static double s_InertiaStart;       // Adaptive: start high (exploration)
+        static double s_InertiaEnd;         // Adaptive: end low (exploitation)
+        static bool   s_bAdaptiveInertia;   // Enable adaptive inertia decay
         static double s_CognitiveWeight;
         static double s_SocialWeight;
         static double s_ProbRegenerate;
+        static double s_VelocityClamp;      // Max velocity as fraction of range (0=disabled)
+        static int    s_LocalSearchInterval; // Iterations between local searches (0=disabled)
+        static double s_LocalSearchRadius;  // Search radius as fraction of range
 
         static QVector<Vector3d> s_DebugPts;
         static QVector<Vector3d> s_DebugVecs;
