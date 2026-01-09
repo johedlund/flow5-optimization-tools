@@ -24,6 +24,9 @@
 
 #include "optimizationpanel.h"
 
+#include <vector>
+#include <tuple>
+
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -500,6 +503,15 @@ void OptimizationPanel::onRun()
         m_pTask = nullptr;
         QMessageBox::warning(this, "Error", "Foil has no optimizable variables.");
         return;
+    }
+
+    // Set up optimization markers for visualization (V1 and V3 only)
+    {
+        std::vector<std::pair<double, double>> ctrlPts;
+        std::vector<std::tuple<double, double, double>> bounds;
+        m_pTask->getOptimMarkers(ctrlPts, bounds);
+        m_pSectionView->setOptimMarkers(ctrlPts, bounds);
+        m_pSectionView->update();
     }
 
     // Configure Objectives

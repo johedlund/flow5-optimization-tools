@@ -269,6 +269,7 @@ void FoilWt::paint(QPainter &painter)
 
     paintFoils(painter);
     paintSplines(painter);
+    if(m_bShowOptimMarkers) paintOptimMarkers(painter);
     if(m_pSF && m_pSF->isVisible()) paintSplineFoil(painter);
     if(m_LECircleRadius>PRECISION) paintLECircle(painter);
     updateScaleLabel();
@@ -834,6 +835,84 @@ void FoilWt::drawHinges(QPainter &painter, Foil const*pFoil)
         xfl::drawSymbol(painter, Line::BIGCIRCLE_F, Qt::cyan, Qt::transparent, pt);
         painter.drawText(pt.x()-DisplayOptions::textFontStruct().width("T.E. hinge")-5, pt.y()+DisplayOptions::textFontStruct().height(), "T.E. hinge");
     }
+}
+
+
+void FoilWt::setOptimMarkers(std::vector<std::pair<double, double>> const &ctrlPts,
+                             std::vector<std::tuple<double, double, double>> const &bounds)
+{
+    m_OptimCtrlPts = ctrlPts;
+    m_OptimBounds = bounds;
+    m_bShowOptimMarkers = !ctrlPts.empty() || !bounds.empty();
+}
+
+
+void FoilWt::clearOptimMarkers()
+{
+    m_OptimCtrlPts.clear();
+    m_OptimBounds.clear();
+    m_bShowOptimMarkers = false;
+}
+
+
+void FoilWt::paintOptimMarkers(QPainter &painter)
+{
+    painter.save();
+
+    // Draw bounds boxes first (behind control points)
+    if(!m_OptimBounds.empty())
+    {
+        QPen boundsPen(QColor(100, 100, 255, 120));
+        boundsPen.setWidth(1);
+        boundsPen.setCosmetic(true);
+        boundsPen.setStyle(Qt::DashLine);
+        painter.setPen(boundsPen);
+
+        QBrush boundsBrush(QColor(100, 100, 255, 30));
+        painter.setBrush(boundsBrush);
+
+        const double boxWidth = 0.02; // Width of bounds box in chord units
+
+        for(const auto &bound : m_OptimBounds)
+        {
+            double x = std::get<0>(bound);
+            double yMin = std::get<1>(bound);
+            double yMax = std::get<2>(bound);
+
+            // Convert to screen coordinates
+            double sx1 = (x - boxWidth/2) * m_fScale + m_ptOffset.x();
+            double sx2 = (x + boxWidth/2) * m_fScale + m_ptOffset.x();
+            double sy1 = -yMax * m_fScale * m_fScaleY + m_ptOffset.y();
+            double sy2 = -yMin * m_fScale * m_fScaleY + m_ptOffset.y();
+
+            QRectF rect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+            painter.drawRect(rect);
+        }
+    }
+
+    // Draw control points
+    if(!m_OptimCtrlPts.empty())
+    {
+        QPen ctrlPen(QColor(255, 100, 50));
+        ctrlPen.setWidth(2);
+        ctrlPen.setCosmetic(true);
+        painter.setPen(ctrlPen);
+
+        QBrush ctrlBrush(QColor(255, 100, 50));
+        painter.setBrush(ctrlBrush);
+
+        const int ptRadius = 4;
+
+        for(const auto &pt : m_OptimCtrlPts)
+        {
+            double sx = pt.first * m_fScale + m_ptOffset.x();
+            double sy = -pt.second * m_fScale * m_fScaleY + m_ptOffset.y();
+
+            painter.drawEllipse(QPointF(sx, sy), ptRadius, ptRadius);
+        }
+    }
+
+    painter.restore();
 }
 
 

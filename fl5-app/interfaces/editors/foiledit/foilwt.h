@@ -27,6 +27,8 @@
 
 #include <QSettings>
 #include <QCheckBox>
+#include <vector>
+#include <tuple>
 
 #include <interfaces/widgets/view/section2dwt.h>
 
@@ -76,6 +78,12 @@ class FoilWt : public Section2dWt
         static LineStyle &bufferFoilStyle() {return s_BufferStyle;}
         static void setBufferFoilStyle(LineStyle const &ls)  {s_BufferStyle=ls;}
 
+        // Optimization overlay markers (control points with bounds boxes)
+        void setOptimMarkers(std::vector<std::pair<double, double>> const &ctrlPts,
+                             std::vector<std::tuple<double, double, double>> const &bounds);
+        void clearOptimMarkers();
+        void showOptimMarkers(bool bShow) {m_bShowOptimMarkers = bShow;}
+
     protected:
         void paint(QPainter &painter) override;
 
@@ -105,6 +113,7 @@ class FoilWt : public Section2dWt
         void paintSplineFoil(QPainter &painter);
         void paintLECircle(QPainter &painter);
         void paintFoilLegend(QPainter &painter);
+        void paintOptimMarkers(QPainter &painter);
         void drawHinges(QPainter &painter, const Foil *pFoil);
 
     private:
@@ -132,6 +141,11 @@ class FoilWt : public Section2dWt
         static bool s_bCamberLines;
         static bool s_bFillBufferFoil;
         static LineStyle s_BufferStyle;
+
+        // Optimization overlay data
+        bool m_bShowOptimMarkers{false};
+        std::vector<std::pair<double, double>> m_OptimCtrlPts;  // (x, y) control points
+        std::vector<std::tuple<double, double, double>> m_OptimBounds;  // (x, yMin, yMax) bounds boxes
 };
 
 

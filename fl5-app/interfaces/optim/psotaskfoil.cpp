@@ -422,39 +422,54 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
             workBSpline.setCtrlPoint(ctrlIndex, pt);
         }
 
-        // For symmetric mode, mirror upper surface to lower surface
-        if(m_bSymmetric)
-        {
-            // LE is at m_BSplineLECtrlIndex
-            // Upper surface: indices 1 to LEindex-1
-            // Lower surface: indices LEindex+1 to nCtrl-2 (excluding last TE point)
-            // Mirror: upper[k] <-> lower[nCtrl-1-k] for same X position
-            for(int i = 1; i < m_BSplineLECtrlIndex; ++i)
-            {
-                const int mirrorIndex = nCtrl - 1 - i;
-                if(mirrorIndex > m_BSplineLECtrlIndex && mirrorIndex < nCtrl - 1)
-                {
-                    Node2d upperPt = workBSpline.controlPoint(i);
-                    Node2d lowerPt = workBSpline.controlPoint(mirrorIndex);
-                    lowerPt.y = -upperPt.y; // Mirror Y
-                    workBSpline.setCtrlPoint(mirrorIndex, lowerPt);
-                }
-            }
-            // Set LE to y=0 for perfect symmetry
-            Node2d lePt = workBSpline.controlPoint(m_BSplineLECtrlIndex);
-            lePt.y = 0.0;
-            workBSpline.setCtrlPoint(m_BSplineLECtrlIndex, lePt);
-        }
-
         // Generate the output curve from modified control points
         workBSpline.updateSpline();
         workBSpline.makeCurve();
 
-        // Create foil from B-spline output points
         const std::vector<Node2d> &output = workBSpline.outputPts();
         if(output.size() < 10) { delete pNewFoil; return nullptr; }
 
-        pNewFoil->setBaseNodes(output);
+        // For symmetric mode, mirror at output curve level (not control points)
+        if(m_bSymmetric)
+        {
+            // Find LE index in output curve (minimum X)
+            int leIdx = 0;
+            double minX = output[0].x;
+            for(int i = 1; i < int(output.size()); ++i)
+            {
+                if(output[i].x < minX)
+                {
+                    minX = output[i].x;
+                    leIdx = i;
+                }
+            }
+
+            // Build symmetric foil: upper surface mirrored to lower
+            // Output is ordered: TE(upper) -> LE -> TE(lower)
+            std::vector<Node2d> symPts;
+            symPts.reserve(output.size());
+
+            // Copy upper surface (0 to leIdx)
+            for(int i = 0; i <= leIdx; ++i)
+                symPts.push_back(output[i]);
+
+            // Set LE to y=0
+            symPts[leIdx].y = 0.0;
+
+            // Mirror upper surface to create lower (skip LE, go from leIdx-1 to 0)
+            for(int i = leIdx - 1; i >= 0; --i)
+            {
+                Node2d pt = symPts[i];
+                pt.y = -pt.y;
+                symPts.push_back(pt);
+            }
+
+            pNewFoil->setBaseNodes(symPts);
+        }
+        else
+        {
+            pNewFoil->setBaseNodes(output);
+        }
     }
     else // V1
     {
@@ -535,6 +550,64 @@ void PSOTaskFoil::setTargetCl(double cl)
     m_TargetMode = TargetMode::Cl;
     m_TargetValue = cl;
 }
+
+
+void PSOTaskFoil::getOptimMarkers(std::vector<std::pair<double, double>> &ctrlPts,
+                                   std::vector<std::tuple<double, double, double>> &bounds) const
+{
+    ctrlPts.clear();
+    bounds.clear();
+
+    if(m_Preset == PresetType::V3_BSpline_Control)
+    {
+        // V3: Use B-spline control points
+        const int nCtrl = m_BaseBSpline.nCtrlPoints();
+        for(int i = 0; i < nCtrl; ++i)
+        {
+            Node2d pt = m_BaseBSpline.controlPoint(i);
+            ctrlPts.push_back({pt.x, pt.y});
+        }
+
+        // Bounds for variable control points only
+        for(int i = 0; i < int(m_VarToBase.size()); ++i)
+        {
+            const int ctrlIndex = m_VarToBase[i];
+            if(ctrlIndex >= 0 && ctrlIndex < nCtrl)
+            {
+                Node2d pt = m_BaseBSpline.controlPoint(ctrlIndex);
+                if(i < int(m_Variable.size()))
+                {
+                    double yMin = m_Variable[i].m_Min;
+                    double yMax = m_Variable[i].m_Max;
+                    bounds.push_back({pt.x, yMin, yMax});
+                }
+            }
+        }
+    }
+    else if(m_Preset == PresetType::V1_Y_Only)
+    {
+        // V1: Use base foil nodes being optimized
+        for(int i = 0; i < int(m_VarToBase.size()); ++i)
+        {
+            const int baseIndex = m_VarToBase[i];
+            if(baseIndex >= 0 && baseIndex < int(m_OptimBaseNodes.size()))
+            {
+                double x = m_OptimBaseNodes[baseIndex].x;
+                double y = m_OptimBaseNodes[baseIndex].y;
+                ctrlPts.push_back({x, y});
+
+                if(i < int(m_Variable.size()))
+                {
+                    double yMin = m_Variable[i].m_Min;
+                    double yMax = m_Variable[i].m_Max;
+                    bounds.push_back({x, yMin, yMax});
+                }
+            }
+        }
+    }
+    // V2 (Camber/Thickness) doesn't have spatial control points
+}
+
 
 bool PSOTaskFoil::resolveTarget(bool &useAlpha, double &value) const
 {
@@ -948,35 +1021,55 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             workBSpline.setCtrlPoint(ctrlIndex, pt);
         }
 
-        // For symmetric mode, mirror upper surface to lower surface
-        if(m_bSymmetric)
-        {
-            for(int i = 1; i < m_BSplineLECtrlIndex; ++i)
-            {
-                const int mirrorIndex = nCtrl - 1 - i;
-                if(mirrorIndex > m_BSplineLECtrlIndex && mirrorIndex < nCtrl - 1)
-                {
-                    Node2d upperPt = workBSpline.controlPoint(i);
-                    Node2d lowerPt = workBSpline.controlPoint(mirrorIndex);
-                    lowerPt.y = -upperPt.y;
-                    workBSpline.setCtrlPoint(mirrorIndex, lowerPt);
-                }
-            }
-            // Set LE to y=0 for perfect symmetry
-            Node2d lePt = workBSpline.controlPoint(m_BSplineLECtrlIndex);
-            lePt.y = 0.0;
-            workBSpline.setCtrlPoint(m_BSplineLECtrlIndex, lePt);
-        }
-
         // Generate the output curve from modified control points
         workBSpline.updateSpline();
         workBSpline.makeCurve();
 
-        // Create foil from B-spline output points
         const std::vector<Node2d> &output = workBSpline.outputPts();
         if(output.size() < 10) return;
 
-        workFoil.setBaseNodes(output);
+        // For symmetric mode, mirror at output curve level (not control points)
+        if(m_bSymmetric)
+        {
+            // Find LE index in output curve (minimum X)
+            int leIdx = 0;
+            double minX = output[0].x;
+            for(int i = 1; i < int(output.size()); ++i)
+            {
+                if(output[i].x < minX)
+                {
+                    minX = output[i].x;
+                    leIdx = i;
+                }
+            }
+
+            // Build symmetric foil: upper surface mirrored to lower
+            // Output is ordered: TE(upper) -> LE -> TE(lower)
+            // Upper: indices 0 to leIdx, Lower: indices leIdx to end
+            std::vector<Node2d> symPts;
+            symPts.reserve(output.size());
+
+            // Copy upper surface (0 to leIdx)
+            for(int i = 0; i <= leIdx; ++i)
+                symPts.push_back(output[i]);
+
+            // Set LE to y=0
+            symPts[leIdx].y = 0.0;
+
+            // Mirror upper surface to create lower (skip LE, go from leIdx-1 to 0)
+            for(int i = leIdx - 1; i >= 0; --i)
+            {
+                Node2d pt = symPts[i];
+                pt.y = -pt.y;
+                symPts.push_back(pt);
+            }
+
+            workFoil.setBaseNodes(symPts);
+        }
+        else
+        {
+            workFoil.setBaseNodes(output);
+        }
     }
     else // V1
     {

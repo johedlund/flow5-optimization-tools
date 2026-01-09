@@ -142,6 +142,11 @@ class PSOTaskFoil : public PSOTask
 
         Foil* createOptimizedFoil(const Particle &p) const;
 
+        // Visualization data for optimization preview
+        PresetType preset() const {return m_Preset;}
+        void getOptimMarkers(std::vector<std::pair<double, double>> &ctrlPts,
+                             std::vector<std::tuple<double, double, double>> &bounds) const;
+
     private:
         void calcFitness(Particle *pParticle, bool bLong=false, bool bTrace=false) const override;
         bool resolveTarget(bool &useAlpha, double &value) const;
