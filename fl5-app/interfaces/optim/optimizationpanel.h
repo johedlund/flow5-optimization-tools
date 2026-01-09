@@ -104,6 +104,9 @@ private:
     double getReferenceValue(int paramIndex) const;
     PSOTaskFoil::Constraints buildConstraints() const;
 
+    // Optimization preview
+    void updateOptimMarkersPreview();
+
     Foil *m_pFoil{nullptr};
     Polar *m_pPolar{nullptr};
     QPointer<PSOTaskFoil> m_pTask;

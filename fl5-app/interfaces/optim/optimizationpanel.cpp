@@ -146,6 +146,7 @@ void OptimizationPanel::initPanel(Foil *pFoil, Polar *pPolar)
         }
 
         rebuildSectionPreview();
+        updateOptimMarkersPreview();
     }
 }
 
@@ -202,6 +203,7 @@ void OptimizationPanel::setupUI()
     // 2. Section Preview
     m_pSectionView = new FoilWt(this);
     m_pSectionView->showLegend(false);
+    m_pSectionView->showOptimMarkers(true);
     visSplitter->addWidget(m_pSectionView);
 
     // 3. Log
@@ -241,6 +243,8 @@ void OptimizationPanel::setupUI()
                               "V1: Modifies Y-coordinates of base nodes (interpolating).\n"
                               "V2: Optimizes Camber and Thickness distributions directly.\n"
                               "V3: Modifies B-spline control points (approximating, smoother).");
+    connect(m_PresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &OptimizationPanel::updateOptimMarkersPreview);
     configLayout->addRow("Preset:", m_PresetCombo);
     inspectorLayout->addWidget(configGroup);
 
@@ -254,6 +258,8 @@ void OptimizationPanel::setupUI()
     m_sbOptimPoints->setToolTip("Number of control points used to deform the foil.\n"
                                 "Fewer points result in smoother shapes but less flexibility.\n"
                                 "More points allow complex shapes but may introduce wiggliness.");
+    connect(m_sbOptimPoints, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &OptimizationPanel::updateOptimMarkersPreview);
     geoLayout->addRow("Points:", m_sbOptimPoints);
 
     m_sbBoundsScale = new QDoubleSpinBox(this);
@@ -264,12 +270,16 @@ void OptimizationPanel::setupUI()
     m_sbBoundsScale->setToolTip("Scales the search space for each variable.\n"
                                 "Values > 1.0 allow larger deformations from the original foil.\n"
                                 "Values < 1.0 constrain the optimization to the neighborhood of the original foil.");
+    connect(m_sbBoundsScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &OptimizationPanel::updateOptimMarkersPreview);
     geoLayout->addRow("Bounds Scale:", m_sbBoundsScale);
 
     m_cbSymmetric = new QCheckBox("Symmetric foil", this);
     m_cbSymmetric->setToolTip("Force the foil to be symmetric (zero camber).\n"
                               "Upper and lower surfaces will be mirrored about the chord line.");
     m_cbSymmetric->setChecked(false);
+    connect(m_cbSymmetric, &QCheckBox::toggled,
+            this, &OptimizationPanel::updateOptimMarkersPreview);
     geoLayout->addRow("", m_cbSymmetric);
     inspectorLayout->addWidget(geoGroup);
 
@@ -822,6 +832,44 @@ void OptimizationPanel::rebuildSectionPreview()
 
     m_pSectionView->addFoil(m_pGhostFoil);
     m_pSectionView->setBufferFoil(m_pPreviewFoil);
+    m_pSectionView->update();
+}
+
+void OptimizationPanel::updateOptimMarkersPreview()
+{
+    if(!m_pSectionView)
+        return;
+
+    if(!m_pFoil)
+    {
+        m_pSectionView->clearOptimMarkers();
+        m_pSectionView->update();
+        return;
+    }
+
+    // Create a temporary task to get the optimization markers
+    PSOTaskFoil tempTask;
+    tempTask.setFoil(m_pFoil);
+
+    PSOTaskFoil::PresetType preset = static_cast<PSOTaskFoil::PresetType>(m_PresetCombo->currentData().toInt());
+    tempTask.setPreset(preset);
+    tempTask.setOptimizationPoints(m_sbOptimPoints->value());
+    tempTask.setBoundsScale(m_sbBoundsScale->value());
+    tempTask.setSymmetric(m_cbSymmetric->isChecked());
+
+    tempTask.initVariablesFromFoil();
+
+    if(tempTask.nVariables() == 0)
+    {
+        m_pSectionView->clearOptimMarkers();
+        m_pSectionView->update();
+        return;
+    }
+
+    std::vector<std::pair<double, double>> ctrlPts;
+    std::vector<std::tuple<double, double, double>> bounds;
+    tempTask.getOptimMarkers(ctrlPts, bounds);
+    m_pSectionView->setOptimMarkers(ctrlPts, bounds);
     m_pSectionView->update();
 }
 
