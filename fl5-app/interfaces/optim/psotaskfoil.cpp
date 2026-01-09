@@ -424,6 +424,13 @@ void PSOTaskFoil::setTargetAlpha(double alpha)
     m_TargetValue = alpha;
 }
 
+void PSOTaskFoil::setPlane3D(PlaneXfl *pPlane, int wingIndex, int sectionIndex)
+{
+    m_pPlane3D = pPlane;
+    m_WingIndex = wingIndex;
+    m_SectionIndex = sectionIndex;
+}
+
 void PSOTaskFoil::setTargetCl(double cl)
 {
     m_TargetMode = TargetMode::Cl;
@@ -831,6 +838,13 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     if(!resolveTarget(useAlpha, target)) {
         delete task;
         return;
+    }
+
+    // Mode B: apply induced alpha correction for 3D effects
+    // In 3D flow, the effective AoA at the section is alpha_geometric + alpha_induced
+    // The induced alpha is typically negative (downwash reduces effective AoA)
+    if (m_OptMode == OptimizationMode::ModeB && useAlpha && std::isfinite(m_InducedAlpha)) {
+        target += m_InducedAlpha;  // alpha_effective = alpha_geometric + alpha_induced
     }
 
     task->setAoAAnalysis(useAlpha);

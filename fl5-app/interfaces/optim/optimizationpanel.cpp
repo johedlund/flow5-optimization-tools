@@ -39,6 +39,8 @@
 #include <QDoubleSpinBox>
 #include <QSpinBox>
 #include <QCheckBox>
+#include <QRadioButton>
+#include <QButtonGroup>
 #include <QProgressBar>
 #include <QMessageBox>
 #include <QtConcurrent/QtConcurrent>
@@ -47,8 +49,14 @@
 #include <api/foil.h>
 #include <api/polar.h>
 #include <api/xfoiltask.h>
+#include <objects3d.h>
+#include <plane.h>
+#include <planexfl.h>
+#include <wingxfl.h>
+#include <wingsection.h>
 #include <interfaces/optim/psotaskfoil.h>
 #include <interfaces/optim/psotask.h>
+#include <interfaces/optim/inducedaoaadapter.h>
 #include <interfaces/graphs/controls/graphoptions.h>
 #include <interfaces/graphs/containers/graphwt.h>
 #include <interfaces/graphs/graph/graph.h>
@@ -318,8 +326,58 @@ void OptimizationPanel::setupUI()
                           "9.0: Standard wind tunnel / smooth air.\n"
                           "~0: Fully turbulent flow.");
     runLayout->addRow("NCrit:", m_sbNCrit);
-    
+
     inspectorLayout->addWidget(runGroup);
+
+    // Mode Selection Group (Mode A vs Mode B)
+    auto *modeGroup = new QGroupBox("Optimization Mode", inspectorWidget);
+    auto *modeLayout = new QVBoxLayout(modeGroup);
+
+    auto *modeButtonGroup = new QButtonGroup(this);
+    m_rbModeA = new QRadioButton("Mode A: 2D only (fixed AoA)", this);
+    m_rbModeA->setToolTip("Standard 2D optimization.\n"
+                          "Foil is evaluated at the specified geometric angle of attack.\n"
+                          "No 3D wing effects are considered.");
+    m_rbModeA->setChecked(true);
+    m_rbModeB = new QRadioButton("Mode B: 3D coupled (induced AoA)", this);
+    m_rbModeB->setToolTip("3D-coupled optimization.\n"
+                          "Runs a 3D panel analysis to compute the induced angle of attack\n"
+                          "at the selected wing section, then optimizes the foil at the\n"
+                          "effective angle (geometric + induced).");
+    modeButtonGroup->addButton(m_rbModeA);
+    modeButtonGroup->addButton(m_rbModeB);
+    modeLayout->addWidget(m_rbModeA);
+    modeLayout->addWidget(m_rbModeB);
+
+    // Mode B options (hidden when Mode A selected)
+    m_pModeBOptions = new QWidget(this);
+    auto *modeBLayout = new QFormLayout(m_pModeBOptions);
+    modeBLayout->setContentsMargins(20, 5, 0, 0);
+
+    m_PlaneCombo = new QComboBox(this);
+    m_PlaneCombo->setToolTip("Select the plane containing the wing to optimize.");
+    modeBLayout->addRow("Plane:", m_PlaneCombo);
+
+    m_WingCombo = new QComboBox(this);
+    m_WingCombo->setToolTip("Select the wing (main wing, stab, fin, etc.).");
+    modeBLayout->addRow("Wing:", m_WingCombo);
+
+    m_SectionCombo = new QComboBox(this);
+    m_SectionCombo->setToolTip("Select the wing section to optimize.\n"
+                               "The induced AoA will be computed at this spanwise location.");
+    modeBLayout->addRow("Section:", m_SectionCombo);
+
+    m_pModeBOptions->setVisible(false);
+    modeLayout->addWidget(m_pModeBOptions);
+
+    connect(m_rbModeA, &QRadioButton::toggled, this, &OptimizationPanel::onModeChanged);
+    connect(m_rbModeB, &QRadioButton::toggled, this, &OptimizationPanel::onModeChanged);
+    connect(m_PlaneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &OptimizationPanel::onPlaneChanged);
+    connect(m_WingCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &OptimizationPanel::onWingChanged);
+
+    inspectorLayout->addWidget(modeGroup);
 
     // Objectives Group
     auto *objGroup = new QGroupBox("Objectives", inspectorWidget);
@@ -563,11 +621,63 @@ void OptimizationPanel::onRun()
     // Configure Target
     PSOTaskFoil::TargetMode targetMode = static_cast<PSOTaskFoil::TargetMode>(m_TargetModeCombo->currentData().toInt());
     double targetVal = m_TargetValueSpin->value();
-    
+
     if (targetMode == PSOTaskFoil::TargetMode::Alpha)
         m_pTask->setTargetAlpha(targetVal);
     else
         m_pTask->setTargetCl(targetVal);
+
+    // Configure Mode (A or B)
+    if (m_rbModeB->isChecked()) {
+        // Mode B: 3D coupled optimization
+        QString planeName = m_PlaneCombo->currentData().toString();
+        PlaneXfl *pPlane = dynamic_cast<PlaneXfl*>(Objects3d::plane(planeName.toStdString()));
+
+        if (!pPlane) {
+            QMessageBox::warning(this, "Mode B Error", "No plane selected. Please select a plane for 3D analysis.");
+            delete m_pTask;
+            m_pTask = nullptr;
+            return;
+        }
+
+        int wingIndex = m_WingCombo->currentData().toInt();
+        int sectionIndex = m_SectionCombo->currentData().toInt();
+
+        // Run 3D analysis to get induced alpha
+        log(QString("Mode B: Running 3D analysis for %1, wing %2, section %3...")
+            .arg(planeName).arg(wingIndex).arg(sectionIndex));
+
+        InducedAoAAdapter adapter;
+        adapter.setPlane(pPlane, wingIndex, sectionIndex);
+        adapter.setFlightConditions(targetVal, 30.0, 1.225, 1.5e-5);  // Use target alpha, default velocity
+        adapter.setNCrit(m_sbNCrit->value());
+        adapter.setMach(m_sbMach->value());
+
+        if (!adapter.run()) {
+            QString errorMsg = QString("3D analysis failed: %1\n\nFalling back to Mode A.")
+                                   .arg(QString::fromStdString(adapter.lastError()));
+            QMessageBox::warning(this, "Mode B Warning", errorMsg);
+            log("Mode B failed: " + QString::fromStdString(adapter.lastError()));
+            log("Continuing with Mode A (no induced AoA correction).");
+            m_pTask->setOptimizationMode(PSOTaskFoil::OptimizationMode::ModeA);
+            m_CachedInducedAlpha = 0.0;
+        } else {
+            m_CachedInducedAlpha = adapter.inducedAlpha();
+            double effectiveAlpha = adapter.effectiveAlpha();
+
+            log(QString("Mode B: Geometric AoA = %1 deg").arg(targetVal, 0, 'f', 2));
+            log(QString("Mode B: Induced AoA = %1 deg").arg(m_CachedInducedAlpha, 0, 'f', 2));
+            log(QString("Mode B: Effective AoA = %1 deg").arg(effectiveAlpha, 0, 'f', 2));
+
+            m_pTask->setOptimizationMode(PSOTaskFoil::OptimizationMode::ModeB);
+            m_pTask->setPlane3D(pPlane, wingIndex, sectionIndex);
+            m_pTask->setInducedAlpha(m_CachedInducedAlpha);
+        }
+    } else {
+        // Mode A: Standard 2D optimization
+        m_pTask->setOptimizationMode(PSOTaskFoil::OptimizationMode::ModeA);
+        m_CachedInducedAlpha = 0.0;
+    }
 
     // Configure Constraints
     PSOTaskFoil::Constraints constraints;
@@ -868,4 +978,105 @@ void OptimizationPanel::updateCandidatePreview(const Particle &particle)
 
     m_pSectionView->setBufferFoil(m_pPreviewFoil);
     m_pSectionView->update();
+}
+
+void OptimizationPanel::onModeChanged()
+{
+    bool modeB = m_rbModeB->isChecked();
+    m_pModeBOptions->setVisible(modeB);
+
+    if (modeB) {
+        populatePlaneList();
+    }
+}
+
+void OptimizationPanel::onPlaneChanged(int index)
+{
+    PlaneXfl *pPlane = nullptr;
+    if (index >= 0) {
+        QString planeName = m_PlaneCombo->itemData(index).toString();
+        pPlane = dynamic_cast<PlaneXfl*>(Objects3d::plane(planeName.toStdString()));
+    }
+    populateWingList(pPlane);
+}
+
+void OptimizationPanel::onWingChanged(int index)
+{
+    PlaneXfl *pPlane = nullptr;
+    int planeIndex = m_PlaneCombo->currentIndex();
+    if (planeIndex >= 0) {
+        QString planeName = m_PlaneCombo->itemData(planeIndex).toString();
+        pPlane = dynamic_cast<PlaneXfl*>(Objects3d::plane(planeName.toStdString()));
+    }
+    populateSectionList(pPlane, index);
+}
+
+void OptimizationPanel::populatePlaneList()
+{
+    m_PlaneCombo->blockSignals(true);
+    m_PlaneCombo->clear();
+
+    for (int i = 0; i < Objects3d::nPlanes(); ++i) {
+        Plane *pPlane = Objects3d::planeAt(i);
+        PlaneXfl *pPlaneXfl = dynamic_cast<PlaneXfl*>(pPlane);
+        if (pPlaneXfl) {
+            QString name = QString::fromStdString(pPlaneXfl->name());
+            m_PlaneCombo->addItem(name, name);
+        }
+    }
+
+    m_PlaneCombo->blockSignals(false);
+
+    if (m_PlaneCombo->count() > 0) {
+        m_PlaneCombo->setCurrentIndex(0);
+        onPlaneChanged(0);
+    }
+}
+
+void OptimizationPanel::populateWingList(PlaneXfl *pPlane)
+{
+    m_WingCombo->blockSignals(true);
+    m_WingCombo->clear();
+
+    if (pPlane) {
+        // Check each potential wing
+        const char* wingNames[] = {"Main Wing", "2nd Wing", "Elevator", "Fin"};
+        for (int i = 0; i < 4; ++i) {
+            WingXfl *pWing = pPlane->wing(i);
+            if (pWing) {
+                QString name = QString::fromStdString(pWing->name());
+                if (name.isEmpty())
+                    name = wingNames[i];
+                m_WingCombo->addItem(name, i);
+            }
+        }
+    }
+
+    m_WingCombo->blockSignals(false);
+
+    if (m_WingCombo->count() > 0) {
+        m_WingCombo->setCurrentIndex(0);
+        onWingChanged(0);
+    }
+}
+
+void OptimizationPanel::populateSectionList(PlaneXfl *pPlane, int wingIndex)
+{
+    m_SectionCombo->blockSignals(true);
+    m_SectionCombo->clear();
+
+    if (pPlane && wingIndex >= 0) {
+        WingXfl *pWing = pPlane->wing(wingIndex);
+        if (pWing) {
+            for (int i = 0; i < pWing->nSections(); ++i) {
+                const WingSection &sec = pWing->section(i);
+                QString label = QString("Section %1 (y=%2m)")
+                                    .arg(i)
+                                    .arg(sec.m_YPosition, 0, 'f', 3);
+                m_SectionCombo->addItem(label, i);
+            }
+        }
+    }
+
+    m_SectionCombo->blockSignals(false);
 }

@@ -32,6 +32,7 @@
 
 class Foil;
 class Polar;
+class PlaneXfl;
 class GraphWt;
 class Graph;
 class Curve;
@@ -43,6 +44,8 @@ class QComboBox;
 class QDoubleSpinBox;
 class QSpinBox;
 class QCheckBox;
+class QRadioButton;
+class QWidget;
 class FoilWt;
 class QTextEdit;
 
@@ -67,6 +70,9 @@ private slots:
     void onCancel();
     void onApplyBest();
     void onTaskFinished();
+    void onModeChanged();
+    void onPlaneChanged(int index);
+    void onWingChanged(int index);
 
 private:
     void updateUI(bool isRunning);
@@ -75,6 +81,9 @@ private:
     void updateCandidatePreview(const Particle &particle);
     void clearPreviewFoils();
     void log(const QString &msg);
+    void populatePlaneList();
+    void populateWingList(PlaneXfl *pPlane);
+    void populateSectionList(PlaneXfl *pPlane, int wingIndex);
 
     Foil *m_pFoil{nullptr};
     Polar *m_pPolar{nullptr};
@@ -104,6 +113,15 @@ private:
     QDoubleSpinBox *m_sbReynolds;
     QDoubleSpinBox *m_sbMach;
     QDoubleSpinBox *m_sbNCrit;
+
+    // Mode B (3D coupling)
+    QRadioButton *m_rbModeA;
+    QRadioButton *m_rbModeB;
+    QWidget *m_pModeBOptions;
+    QComboBox *m_PlaneCombo;
+    QComboBox *m_WingCombo;
+    QComboBox *m_SectionCombo;
+    double m_CachedInducedAlpha{0.0};
 
     // Objectives
     QComboBox *m_ObjectiveCombo;

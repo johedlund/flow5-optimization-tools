@@ -30,10 +30,17 @@
 
 class Foil;
 class Polar;
+class PlaneXfl;
 
 class PSOTaskFoil : public PSOTask
 {
     public:
+        enum class OptimizationMode
+        {
+            ModeA,  // 2D only (fixed AoA)
+            ModeB   // 3D coupled (induced AoA correction)
+        };
+
         enum class TargetMode
         {
             Polar,
@@ -114,6 +121,16 @@ class PSOTaskFoil : public PSOTask
         void setMach(double ma) {m_Mach = ma;}
         void setNCrit(double nc) {m_NCrit = nc;}
 
+        // Mode B (3D coupling)
+        void setOptimizationMode(OptimizationMode mode) {m_OptMode = mode;}
+        OptimizationMode optimizationMode() const {return m_OptMode;}
+        void setPlane3D(PlaneXfl *pPlane, int wingIndex, int sectionIndex);
+        void setInducedAlpha(double alpha) {m_InducedAlpha = alpha;}
+        double inducedAlpha() const {return m_InducedAlpha;}
+        PlaneXfl* plane3D() const {return m_pPlane3D;}
+        int wingIndex() const {return m_WingIndex;}
+        int sectionIndex() const {return m_SectionIndex;}
+
         void clearTargetOverride() {m_TargetMode = TargetMode::Polar;}
         TargetMode targetMode() const {return m_TargetMode;}
         int variableBaseIndex(int varIndex) const;
@@ -135,6 +152,13 @@ class PSOTaskFoil : public PSOTask
         double m_Reynolds{1.0e6};
         double m_Mach{0.0};
         double m_NCrit{9.0};
+
+        // Mode B (3D coupling)
+        OptimizationMode m_OptMode{OptimizationMode::ModeA};
+        PlaneXfl *m_pPlane3D{nullptr};  // Not owned - just a reference
+        int m_WingIndex{0};
+        int m_SectionIndex{0};
+        double m_InducedAlpha{0.0};
         int m_OptimizationPoints{0};
         double m_BoundsScale{1.0};
         std::vector<Node2d> m_OptimBaseNodes;
