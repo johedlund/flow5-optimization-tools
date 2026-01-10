@@ -81,6 +81,7 @@ class FoilWt : public Section2dWt
         // Optimization overlay markers (control points with bounds boxes)
         void setOptimMarkers(std::vector<std::pair<double, double>> const &ctrlPts,
                              std::vector<std::tuple<double, double, double>> const &bounds);
+        void setCurrentMarkers(std::vector<std::pair<double, double>> const &currentPts);
         void clearOptimMarkers();
         void showOptimMarkers(bool bShow) {m_bShowOptimMarkers = bShow;}
 
@@ -144,7 +145,8 @@ class FoilWt : public Section2dWt
 
         // Optimization overlay data
         bool m_bShowOptimMarkers{false};
-        std::vector<std::pair<double, double>> m_OptimCtrlPts;  // (x, y) control points
+        std::vector<std::pair<double, double>> m_OptimCtrlPts;  // (x, y) base control points
+        std::vector<std::pair<double, double>> m_OptimCurrentPts;  // (x, y) current/optimized positions
         std::vector<std::tuple<double, double, double>> m_OptimBounds;  // (x, yMin, yMax) bounds boxes
 };
 

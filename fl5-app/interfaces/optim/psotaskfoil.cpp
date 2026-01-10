@@ -813,6 +813,71 @@ void PSOTaskFoil::getOptimMarkers(std::vector<std::pair<double, double>> &ctrlPt
 }
 
 
+void PSOTaskFoil::getCurrentMarkers(Particle const &p, std::vector<std::pair<double, double>> &ctrlPts) const
+{
+    ctrlPts.clear();
+
+    if(p.dimension() == 0)
+        return;
+
+    if(m_Preset == PresetType::V3_BSpline_Control)
+    {
+        // V3: Start with base B-spline control points, then apply particle positions
+        const int nCtrl = m_BaseBSpline.nCtrlPoints();
+        if(nCtrl < 4)
+            return;
+
+        // Initialize with base positions
+        std::vector<Node2d> currentPts(nCtrl);
+        for(int i = 0; i < nCtrl; ++i)
+            currentPts[i] = m_BaseBSpline.controlPoint(i);
+
+        // Apply particle variable values
+        for(int v = 0; v < int(m_VarToBase.size()); ++v)
+        {
+            const int ctrlIndex = m_VarToBase[v];
+            if(ctrlIndex >= 0 && ctrlIndex < nCtrl && v < p.dimension())
+            {
+                if(v < int(m_VarIsX.size()) && m_VarIsX[v])
+                    currentPts[ctrlIndex].x = p.pos(v);
+                else
+                    currentPts[ctrlIndex].y = p.pos(v);
+            }
+        }
+
+        // Return all control points with current positions
+        for(int i = 0; i < nCtrl; ++i)
+            ctrlPts.push_back({currentPts[i].x, currentPts[i].y});
+    }
+    else if(m_Preset == PresetType::V1_Y_Only)
+    {
+        // V1: Return current positions for variable nodes
+        if(m_OptimBaseNodes.empty() || m_VarToBase.empty())
+            return;
+
+        for(int v = 0; v < int(m_VarToBase.size()); ++v)
+        {
+            const int baseIndex = m_VarToBase[v];
+            if(baseIndex >= 0 && baseIndex < int(m_OptimBaseNodes.size()) && v < p.dimension())
+            {
+                double x = m_OptimBaseNodes[baseIndex].x;
+                double y = p.pos(v);  // Current Y from particle
+
+                // Handle X variables if present
+                if(v < int(m_VarIsX.size()) && m_VarIsX[v])
+                {
+                    x = p.pos(v);
+                    y = m_OptimBaseNodes[baseIndex].y;
+                }
+
+                ctrlPts.push_back({x, y});
+            }
+        }
+    }
+    // V2 (Camber/Thickness) doesn't have spatial control points
+}
+
+
 bool PSOTaskFoil::resolveTarget(bool &useAlpha, double &value) const
 {
     if(!m_pPolar)

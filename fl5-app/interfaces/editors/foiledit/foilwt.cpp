@@ -847,9 +847,16 @@ void FoilWt::setOptimMarkers(std::vector<std::pair<double, double>> const &ctrlP
 }
 
 
+void FoilWt::setCurrentMarkers(std::vector<std::pair<double, double>> const &currentPts)
+{
+    m_OptimCurrentPts = currentPts;
+}
+
+
 void FoilWt::clearOptimMarkers()
 {
     m_OptimCtrlPts.clear();
+    m_OptimCurrentPts.clear();
     m_OptimBounds.clear();
     m_bShowOptimMarkers = false;
 }
@@ -890,20 +897,63 @@ void FoilWt::paintOptimMarkers(QPainter &painter)
         }
     }
 
-    // Draw control points
+    // Draw movement lines from base to current positions
+    const bool hasCurrentPts = !m_OptimCurrentPts.empty();
+    if(hasCurrentPts && m_OptimCurrentPts.size() == m_OptimCtrlPts.size())
+    {
+        QPen movePen(QColor(100, 100, 100, 180));
+        movePen.setWidth(1);
+        movePen.setCosmetic(true);
+        painter.setPen(movePen);
+        painter.setBrush(Qt::NoBrush);
+
+        for(size_t i = 0; i < m_OptimCtrlPts.size(); ++i)
+        {
+            double sx1 = m_OptimCtrlPts[i].first * m_fScale + m_ptOffset.x();
+            double sy1 = -m_OptimCtrlPts[i].second * m_fScale * m_fScaleY + m_ptOffset.y();
+            double sx2 = m_OptimCurrentPts[i].first * m_fScale + m_ptOffset.x();
+            double sy2 = -m_OptimCurrentPts[i].second * m_fScale * m_fScaleY + m_ptOffset.y();
+
+            painter.drawLine(QPointF(sx1, sy1), QPointF(sx2, sy2));
+        }
+    }
+
+    // Draw base control points (orange, smaller when current points exist)
     if(!m_OptimCtrlPts.empty())
     {
         QPen ctrlPen(QColor(255, 100, 50));
-        ctrlPen.setWidth(2);
+        ctrlPen.setWidth(hasCurrentPts ? 1 : 2);
         ctrlPen.setCosmetic(true);
         painter.setPen(ctrlPen);
 
-        QBrush ctrlBrush(QColor(255, 100, 50));
+        QBrush ctrlBrush(hasCurrentPts ? QColor(255, 100, 50, 100) : QColor(255, 100, 50));
         painter.setBrush(ctrlBrush);
+
+        const int ptRadius = hasCurrentPts ? 3 : 4;
+
+        for(const auto &pt : m_OptimCtrlPts)
+        {
+            double sx = pt.first * m_fScale + m_ptOffset.x();
+            double sy = -pt.second * m_fScale * m_fScaleY + m_ptOffset.y();
+
+            painter.drawEllipse(QPointF(sx, sy), ptRadius, ptRadius);
+        }
+    }
+
+    // Draw current/optimized control points (green)
+    if(hasCurrentPts)
+    {
+        QPen currentPen(QColor(50, 200, 50));
+        currentPen.setWidth(2);
+        currentPen.setCosmetic(true);
+        painter.setPen(currentPen);
+
+        QBrush currentBrush(QColor(50, 200, 50));
+        painter.setBrush(currentBrush);
 
         const int ptRadius = 4;
 
-        for(const auto &pt : m_OptimCtrlPts)
+        for(const auto &pt : m_OptimCurrentPts)
         {
             double sx = pt.first * m_fScale + m_ptOffset.x();
             double sy = -pt.second * m_fScale * m_fScaleY + m_ptOffset.y();

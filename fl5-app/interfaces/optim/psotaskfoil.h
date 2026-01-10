@@ -160,6 +160,7 @@ class PSOTaskFoil : public PSOTask
         PresetType preset() const {return m_Preset;}
         void getOptimMarkers(std::vector<std::pair<double, double>> &ctrlPts,
                              std::vector<std::tuple<double, double, double>> &bounds) const;
+        void getCurrentMarkers(Particle const &p, std::vector<std::pair<double, double>> &ctrlPts) const;
 
     private:
         void calcFitness(Particle *pParticle, bool bLong=false, bool bTrace=false) const override;

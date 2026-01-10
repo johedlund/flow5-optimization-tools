@@ -896,6 +896,11 @@ void OptimizationPanel::updateCandidatePreview(const Particle &particle)
 
     m_pSectionView->setBufferFoil(m_pPreviewFoil);
 
+    // Update current control point positions to show movement
+    std::vector<std::pair<double, double>> currentPts;
+    m_pTask->getCurrentMarkers(particle, currentPts);
+    m_pSectionView->setCurrentMarkers(currentPts);
+
     // Show foil properties instead of scale info
     QString foilInfo = QString("Thickness: %1%\nCamber: %2%\nX-Thick: %3%\nX-Camber: %4%")
         .arg(m_pPreviewFoil->maxThickness() * 100, 0, 'f', 2)
