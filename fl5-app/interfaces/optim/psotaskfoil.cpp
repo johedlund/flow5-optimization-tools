@@ -423,6 +423,23 @@ double PSOTaskFoil::variableBaseY(int varIndex) const
     return m_OptimBaseNodes[baseIndex].y;
 }
 
+bool PSOTaskFoil::variableIsX(int varIndex) const
+{
+    if(varIndex < 0 || varIndex >= int(m_VarIsX.size()))
+        return false;
+    return m_VarIsX[varIndex];
+}
+
+double PSOTaskFoil::variableBaseValue(int varIndex) const
+{
+    const int baseIndex = variableBaseIndex(varIndex);
+    if(baseIndex < 0 || baseIndex >= int(m_OptimBaseNodes.size()))
+        return 0.0;
+    if(variableIsX(varIndex))
+        return m_OptimBaseNodes[baseIndex].x;
+    return m_OptimBaseNodes[baseIndex].y;
+}
+
 Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
 {
     if(!m_pFoil || p.dimension() != nVariables())

@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     missingParticle.resizeArrays(missingTask.nVariables(), missingTask.nObjectives(), 1);
     for(int i=0; i<missingTask.nVariables(); ++i)
     {
-        missingParticle.setPos(i, missingTask.variableBaseY(i));
+        missingParticle.setPos(i, missingTask.variableBaseValue(i));
     }
 
     PSOTask *missingBase = &missingTask;
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
     particle.resizeArrays(task.nVariables(), task.nObjectives(), 1);
     for(int i=0; i<task.nVariables(); ++i)
     {
-        particle.setPos(i, task.variableBaseY(i));
+        particle.setPos(i, task.variableBaseValue(i));
     }
 
     PSOTask *base = &task;
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
     // Extreme offsets to stress geometry generation.
     for(int i=0; i<task.nVariables(); ++i)
     {
-        const double y = task.variableBaseY(i);
+        const double y = task.variableBaseValue(i);
         sadParticle.setPos(i, (i % 2 == 0) ? y + 0.5 : y - 0.5);
     }
 
@@ -198,7 +198,7 @@ int main(int argc, char **argv)
     extremeParticle.resizeArrays(extremeTask.nVariables(), extremeTask.nObjectives(), 1);
     for(int i=0; i<extremeTask.nVariables(); ++i)
     {
-        extremeParticle.setPos(i, extremeTask.variableBaseY(i));
+        extremeParticle.setPos(i, extremeTask.variableBaseValue(i));
     }
 
     PSOTask *extremeBase = &extremeTask;

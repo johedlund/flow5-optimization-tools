@@ -150,6 +150,8 @@ class PSOTaskFoil : public PSOTask
         TargetMode targetMode() const {return m_TargetMode;}
         int variableBaseIndex(int varIndex) const;
         double variableBaseY(int varIndex) const;
+        double variableBaseValue(int varIndex) const;  // Returns X or Y based on m_VarIsX
+        bool variableIsX(int varIndex) const;
 
         Foil* createOptimizedFoil(const Particle &p) const;
 
