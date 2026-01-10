@@ -911,14 +911,18 @@ void OptimizationPanel::customEvent(QEvent *event)
              if(m_BestValid) {
                  m_StatusLabel->setText("Optimization finished.");
                  log("Optimization finished. Apply to use the best result.");
-                 
-                 QString summary = QString("Optimization completed successfully.\n\n"
-                                           "Iterations: %1\n"
-                                           "Best Fitness: %2\n\n"
-                                           "Click 'Apply' to create the optimized foil.")
-                                           .arg(PSOTask::s_MaxIter)
-                                           .arg(m_BestParticle.fitness(0), 0, 'g', 6);
-                 QMessageBox::information(this, "Optimization Results", summary);
+
+                 // Only show completion dialog after the last run of a batch
+                 if(m_CurrentRun >= m_TotalRuns)
+                 {
+                     QString summary = QString("Optimization completed successfully.\n\n"
+                                               "Iterations: %1\n"
+                                               "Best Fitness: %2\n\n"
+                                               "Click 'Apply' to create the optimized foil.")
+                                               .arg(PSOTask::s_MaxIter)
+                                               .arg(m_BestParticle.fitness(0), 0, 'g', 6);
+                     QMessageBox::information(this, "Optimization Results", summary);
+                 }
 
              } else {
                  m_StatusLabel->setText("Optimization finished (no valid result).");
@@ -929,7 +933,9 @@ void OptimizationPanel::customEvent(QEvent *event)
             m_StatusLabel->setText("Optimization ended (no result).");
             log("Error: Optimization ended without a valid result.");
         }
-        updateUI(false);
+        // Only disable UI after the last run of a batch
+        if(m_CurrentRun >= m_TotalRuns)
+            updateUI(false);
     }
 }
 
@@ -1447,7 +1453,7 @@ void OptimizationPanel::addObjectiveRow()
     // Reynolds number spinbox (per-objective)
     row->reynoldsSpin = new QDoubleSpinBox(this);
     row->reynoldsSpin->setRange(1e4, 1e8);
-    row->reynoldsSpin->setValue(m_sbReynolds ? m_sbReynolds->value() : 1.0e6);
+    row->reynoldsSpin->setValue(m_sbReynolds ? m_sbReynolds->value() * 1.0e6 : 1.0e6);
     row->reynoldsSpin->setDecimals(0);
     row->reynoldsSpin->setSingleStep(1e5);
     row->reynoldsSpin->setFixedWidth(70);
