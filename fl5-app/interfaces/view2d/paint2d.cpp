@@ -109,6 +109,104 @@ void xfl::drawFoilNormals(QPainter &painter, Foil const*pFoil, double alpha, dou
 }
 
 
+void xfl::drawFoilCurvature(QPainter &painter, Foil const *pFoil, double alpha,
+                            double scalex, double scaley, QPointF const &Offset,
+                            double curvatureScale)
+{
+    if(pFoil->nNodes() < 3) return;
+
+    QPointF From, To;
+    QPen curvaturePen;
+    curvaturePen.setWidth(1);
+    curvaturePen.setStyle(Qt::SolidLine);
+
+    double cosa = cos(alpha*PI/180.0);
+    double sina = sin(alpha*PI/180.0);
+
+    // Compute curvatures at each node using discrete Menger curvature
+    // κ = 4 * Area(triangle) / (|p1-p2| * |p2-p3| * |p3-p1|)
+    std::vector<double> curvatures(pFoil->nNodes(), 0.0);
+    double maxCurvature = 0.0;
+
+    for(int k = 1; k < pFoil->nNodes() - 1; k++)
+    {
+        double x1 = pFoil->x(k-1), y1 = pFoil->y(k-1);
+        double x2 = pFoil->x(k),   y2 = pFoil->y(k);
+        double x3 = pFoil->x(k+1), y3 = pFoil->y(k+1);
+
+        // Edge lengths
+        double d12 = sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+        double d23 = sqrt((x3-x2)*(x3-x2) + (y3-y2)*(y3-y2));
+        double d13 = sqrt((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1));
+
+        // Area via cross product (2*Area = |cross|)
+        double cross = (x2-x1)*(y3-y1) - (y2-y1)*(x3-x1);
+        double area2 = fabs(cross);
+
+        // Menger curvature
+        double denom = d12 * d23 * d13;
+        if(denom > 1e-12)
+        {
+            curvatures[k] = area2 / denom;  // This is 2*Area / (d12*d23*d13) = κ
+            maxCurvature = std::max(maxCurvature, curvatures[k]);
+        }
+    }
+
+    // Clamp max curvature for coloring (typical airfoil curvature ~10-100 at LE)
+    double clampCurvature = std::max(maxCurvature, 50.0);
+
+    // Draw curvature vectors
+    for(int k = 1; k < pFoil->nNodes() - 1; k++)
+    {
+        double kappa = curvatures[k];
+        if(kappa < 1e-6) continue;  // Skip near-zero curvature
+
+        // Position (rotated by alpha)
+        double xa = (pFoil->x(k)-0.5)*cosa - pFoil->y(k)*sina + 0.5;
+        double ya = (pFoil->x(k)-0.5)*sina + pFoil->y(k)*cosa;
+        From.rx() =  xa*scalex + Offset.x();
+        From.ry() = -ya*scaley + Offset.y();
+
+        // Normal vector (rotated by alpha)
+        double nx = pFoil->normal(k).x*cosa - pFoil->normal(k).y*sina;
+        double ny = pFoil->normal(k).x*sina + pFoil->normal(k).y*cosa;
+
+        // Scale normal by curvature
+        double vecLen = kappa * curvatureScale;
+        vecLen = std::min(vecLen, 0.15);  // Clamp max length
+
+        xa += nx * vecLen;
+        ya += ny * vecLen;
+        To.rx() =  xa*scalex + Offset.x();
+        To.ry() = -ya*scaley + Offset.y();
+
+        // Color by curvature: blue (low) -> green -> yellow -> red (high)
+        double t = std::min(kappa / clampCurvature, 1.0);
+        int r, g, b;
+        if(t < 0.5)
+        {
+            // Blue to green
+            double s = t * 2.0;
+            r = 0;
+            g = static_cast<int>(255 * s);
+            b = static_cast<int>(255 * (1.0 - s));
+        }
+        else
+        {
+            // Green to red
+            double s = (t - 0.5) * 2.0;
+            r = static_cast<int>(255 * s);
+            g = static_cast<int>(255 * (1.0 - s));
+            b = 0;
+        }
+        curvaturePen.setColor(QColor(r, g, b));
+        painter.setPen(curvaturePen);
+
+        painter.drawLine(From, To);
+    }
+}
+
+
 void xfl::drawFoilMidLine(QPainter &painter, Foil const*pFoil, double scalex, double scaley, QPointF const &Offset)
 {
     painter.save();

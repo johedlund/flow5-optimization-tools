@@ -90,6 +90,9 @@ void FoilWt::createContextMenu()
     m_pShowCamberLines = new QAction("Show camber lines", this);
     m_pShowCamberLines->setCheckable(true);
     m_pShowCamberLines->setChecked(s_bCamberLines);
+    m_pShowCurvature = new QAction("Show curvature", this);
+    m_pShowCurvature->setCheckable(true);
+    m_pShowCurvature->setChecked(m_bShowCurvature);
 
     m_pBufferMenu = m_pSection2dContextMenu->addMenu("Buffer foil");
     {
@@ -104,12 +107,17 @@ void FoilWt::createContextMenu()
     m_pSection2dContextMenu->addSeparator();
     m_pSection2dContextMenu->addAction(m_pOverlayFoil);
     m_pSection2dContextMenu->addAction(m_pShowCamberLines);
+    m_pSection2dContextMenu->addAction(m_pShowCurvature);
     m_pSection2dContextMenu->addSeparator();
 
     connect(m_pShowBufferFoil,   SIGNAL(triggered()),     SLOT(onBufferShow()));
     connect(m_pFillBufferFoil,   SIGNAL(triggered()),     SLOT(onBufferShow()));
     connect(m_pOverlayFoil,      SIGNAL(triggered()),     SLOT(onOverlayFoil()));
     connect(m_pShowCamberLines,  SIGNAL(triggered(bool)), SLOT(onShowCamberLines(bool)));
+    connect(m_pShowCurvature, &QAction::triggered, this, [this](bool bShow) {
+        m_bShowCurvature = bShow;
+        update();
+    });
 
     for(int iAc=0; iAc<m_ActionList.count(); iAc++)
         m_pSection2dContextMenu->addAction(m_ActionList.at(iAc));
@@ -494,6 +502,11 @@ void FoilWt::paintFoil(QPainter &painter, Foil const *pFoil)
         FoilPen.setStyle(Qt::DashLine);
         painter.setPen(FoilPen);
         xfl::drawFoilMidLine(painter, pFoil, m_fScale, m_fScale*m_fScaleY, m_ptOffset);
+    }
+
+    if (m_bShowCurvature)
+    {
+        xfl::drawFoilCurvature(painter, pFoil, 0.0, m_fScale, m_fScale*m_fScaleY, m_ptOffset);
     }
     painter.restore();
 }

@@ -85,6 +85,10 @@ class FoilWt : public Section2dWt
         void clearOptimMarkers();
         void showOptimMarkers(bool bShow) {m_bShowOptimMarkers = bShow;}
 
+        // Curvature visualization (porcupine plot)
+        void showCurvature(bool bShow) {m_bShowCurvature = bShow;}
+        bool isCurvatureShown() const {return m_bShowCurvature;}
+
     protected:
         void paint(QPainter &painter) override;
 
@@ -135,6 +139,7 @@ class FoilWt : public Section2dWt
 
         QAction *m_pShowBufferFoil, *m_pFillBufferFoil;
         QAction *m_pOverlayFoil, *m_pShowCamberLines;
+        QAction *m_pShowCurvature;
 
         QPointF m_LegendPos;
 
@@ -148,6 +153,9 @@ class FoilWt : public Section2dWt
         std::vector<std::pair<double, double>> m_OptimCtrlPts;  // (x, y) base control points
         std::vector<std::pair<double, double>> m_OptimCurrentPts;  // (x, y) current/optimized positions
         std::vector<std::tuple<double, double, double>> m_OptimBounds;  // (x, yMin, yMax) bounds boxes
+
+        // Curvature visualization
+        bool m_bShowCurvature{false};
 };
 
 
