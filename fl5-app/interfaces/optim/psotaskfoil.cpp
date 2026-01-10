@@ -378,6 +378,20 @@ double upperSurfaceDCpDx(const Foil &foil, const OpPoint &opp, double xTarget)
     return std::nan("");
 }
 
+/**
+ * Smooth step function for LE bounds fade.
+ * Uses Hermite interpolation: f(t) = 3t^2 - 2t^3
+ * Properties: f(0)=0, f(1)=1, f'(0)=0, f'(1)=0
+ * This ensures continuous derivatives at the fade boundary, preventing kinks.
+ */
+double smoothstepFactor(double dist, double fadeRegion, double minFactor = 0.0)
+{
+    if (fadeRegion < 1e-9) return 1.0;
+    double t = std::clamp(dist / fadeRegion, 0.0, 1.0);
+    double factor = t * t * (3.0 - 2.0 * t);  // Hermite smoothstep
+    return minFactor + (1.0 - minFactor) * factor;
+}
+
 } // namespace
 
 PSOTaskFoil::PSOTaskFoil()
@@ -827,6 +841,18 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         double delta = (yDelta > 0.0) ? yDelta : std::max(0.005, 0.3 * maxThickness);
         delta *= m_BoundsScale;
 
+        // LE protection: fade bounds near LE using smooth step function
+        // Find maxX for chord calculation (TE is at first/last control point)
+        double maxX = m_BaseBSpline.controlPoint(0).x;
+        for(int i = 1; i < nCtrl; ++i)
+        {
+            if(m_BaseBSpline.controlPoint(i).x > maxX)
+                maxX = m_BaseBSpline.controlPoint(i).x;
+        }
+        const double xLE = minX; // minX already computed above for LE detection
+        const double chord = maxX - minX;
+        const double fadeRegion = m_LEFadeRegion * chord;
+
         m_VarToBase.clear();
         m_Variable.reserve(nCtrl);
 
@@ -836,9 +862,13 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             // Lower surface will be mirrored in createOptimizedFoil
             for(int i = 1; i < m_BSplineLECtrlIndex; ++i)
             {
+                const double x = m_BaseBSpline.controlPoint(i).x;
                 const double y = m_BaseBSpline.controlPoint(i).y;
-                const double minY = y - delta;
-                const double maxY = y + delta;
+                const double dist = std::fabs(x - xLE);
+                const double factor = smoothstepFactor(dist, fadeRegion, m_LEFadeMinFactor);
+                const double localDelta = delta * factor;
+                const double minY = y - localDelta;
+                const double maxY = y + localDelta;
 
                 m_Variable.emplace_back("cp_" + std::to_string(i), minY, maxY);
                 m_VarToBase.push_back(i);
@@ -852,9 +882,13 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
                 if(i == 0 || i == nCtrl - 1 || i == m_BSplineLECtrlIndex)
                     continue;
 
+                const double x = m_BaseBSpline.controlPoint(i).x;
                 const double y = m_BaseBSpline.controlPoint(i).y;
-                const double minY = y - delta;
-                const double maxY = y + delta;
+                const double dist = std::fabs(x - xLE);
+                const double factor = smoothstepFactor(dist, fadeRegion, m_LEFadeMinFactor);
+                const double localDelta = delta * factor;
+                const double minY = y - localDelta;
+                const double maxY = y + localDelta;
 
                 m_Variable.emplace_back("cp_" + std::to_string(i), minY, maxY);
                 m_VarToBase.push_back(i); // Maps variable index to control point index
@@ -936,6 +970,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 
     int leOptimIndex = 0;
     double minX = m_OptimBaseNodes.front().x;
+    double maxX = m_OptimBaseNodes.front().x;
     for(int i=1; i<int(m_OptimBaseNodes.size()); ++i)
     {
         if(m_OptimBaseNodes[i].x < minX)
@@ -943,11 +978,18 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             minX = m_OptimBaseNodes[i].x;
             leOptimIndex = i;
         }
+        if(m_OptimBaseNodes[i].x > maxX)
+            maxX = m_OptimBaseNodes[i].x;
     }
 
     const double maxThickness = std::fabs(m_pFoil->maxThickness());
     double delta = (yDelta > 0.0) ? yDelta : std::max(0.002, 0.2 * maxThickness);
     delta *= m_BoundsScale;
+
+    // LE protection: fade bounds near LE using smooth step function
+    const double chord = maxX - minX;
+    const double fadeRegion = m_LEFadeRegion * chord;
+    const double xLE = m_OptimBaseNodes[leOptimIndex].x;
 
     const int nOptim = int(m_OptimBaseNodes.size());
     m_Variable.reserve(nOptim);
@@ -958,9 +1000,13 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         // Lower surface will be mirrored in createOptimizedFoil
         for(int i = 1; i < leOptimIndex; ++i)
         {
+            const double x = m_OptimBaseNodes[i].x;
             const double y = m_OptimBaseNodes[i].y;
-            const double minY = y - delta;
-            const double maxY = y + delta;
+            const double dist = std::fabs(x - xLE);
+            const double factor = smoothstepFactor(dist, fadeRegion, m_LEFadeMinFactor);
+            const double localDelta = delta * factor;
+            const double minY = y - localDelta;
+            const double maxY = y + localDelta;
 
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
             m_VarToBase.push_back(i);
@@ -973,9 +1019,13 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             if(i == 0 || i == nOptim-1 || i == leOptimIndex)
                 continue;
 
+            const double x = m_OptimBaseNodes[i].x;
             const double y = m_OptimBaseNodes[i].y;
-            const double minY = y - delta;
-            const double maxY = y + delta;
+            const double dist = std::fabs(x - xLE);
+            const double factor = smoothstepFactor(dist, fadeRegion, m_LEFadeMinFactor);
+            const double localDelta = delta * factor;
+            const double minY = y - localDelta;
+            const double maxY = y + localDelta;
 
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
             m_VarToBase.push_back(i);

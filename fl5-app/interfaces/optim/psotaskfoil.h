@@ -182,6 +182,10 @@ class PSOTaskFoil : public PSOTask
         int m_OptimizationPoints{0};
         double m_BoundsScale{1.0};
         bool m_bSymmetric{false};
+
+        // LE protection: fade bounds near LE to prevent concave/tangled geometry
+        double m_LEFadeRegion{0.10};      // Fade region as fraction of chord (10%)
+        double m_LEFadeMinFactor{0.0};    // Minimum factor at LE (0 = fully locked)
         std::vector<Node2d> m_OptimBaseNodes;
         std::vector<int> m_OptimBaseIndex;
         std::vector<int> m_VarToBase;
