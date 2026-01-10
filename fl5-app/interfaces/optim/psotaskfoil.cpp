@@ -1002,20 +1002,16 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     const double maxThickness = std::fabs(m_pFoil->maxThickness());
     double delta = (yDelta > 0.0) ? yDelta : std::max(0.002, 0.2 * maxThickness);
     delta *= m_BoundsScale;
-    const double xDelta = delta * m_LEXBoundsScale;
 
     const int nOptim = int(m_OptimBaseNodes.size());
-    m_Variable.reserve(nOptim * 2);  // Reserve for possible X+Y variables
+    m_Variable.reserve(nOptim);
     m_VarIsX.clear();
 
-    // Helper to check if point is LE-adjacent
-    auto isLEAdjacent = [leOptimIndex, this](int i) {
-        const int distFromLE = std::abs(i - leOptimIndex);
-        return distFromLE > 0 && distFromLE <= m_LEXPoints;
-    };
-
-    // LE X position - X variables must never go below this
+    // LE exclusion zone: skip variables for points too close to LE
+    // High-leverage points near LE cause LE distortion when moved
     const double leX = minX;
+    const double chord = maxX - minX;
+    const double leExclusionX = leX + m_LEExclusionChord * chord;
 
     if(m_bSymmetric)
     {
@@ -1026,17 +1022,11 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             const double x = m_OptimBaseNodes[i].x;
             const double y = m_OptimBaseNodes[i].y;
 
-            // Add X variable for LE-adjacent points
-            // X can only move toward TE (increase), never past LE
-            if(isLEAdjacent(i))
-            {
-                const double xMin = std::max(leX, x - xDelta);
-                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), xMin, x + xDelta);
-                m_VarToBase.push_back(i);
-                m_VarIsX.push_back(true);
-            }
+            // Skip points within LE exclusion zone
+            if(x < leExclusionX)
+                continue;
 
-            // Add Y variable for all points
+            // Add Y variable
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), y - delta, y + delta);
             m_VarToBase.push_back(i);
             m_VarIsX.push_back(false);
@@ -1052,17 +1042,11 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             const double x = m_OptimBaseNodes[i].x;
             const double y = m_OptimBaseNodes[i].y;
 
-            // Add X variable for LE-adjacent points
-            // X can only move toward TE (increase), never past LE
-            if(isLEAdjacent(i))
-            {
-                const double xMin = std::max(leX, x - xDelta);
-                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), xMin, x + xDelta);
-                m_VarToBase.push_back(i);
-                m_VarIsX.push_back(true);
-            }
+            // Skip points within LE exclusion zone
+            if(x < leExclusionX)
+                continue;
 
-            // Add Y variable for all points
+            // Add Y variable
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), y - delta, y + delta);
             m_VarToBase.push_back(i);
             m_VarIsX.push_back(false);

@@ -185,9 +185,13 @@ class PSOTaskFoil : public PSOTask
         double m_BoundsScale{1.0};
         bool m_bSymmetric{false};
 
-        // LE X-movement: allow X adjustment for points near LE to enable proper shaping
-        int m_LEXPoints{2};               // Number of LE-adjacent points with X movement (each side)
-        double m_LEXBoundsScale{0.2};     // X bounds = Y bounds * this factor (tighter)
+        // LE protection: skip optimization variables for points too close to LE
+        // Points within exclusion zone remain in base nodes for spline but don't get variables
+        double m_LEExclusionChord{0.03};  // Skip variables for points within 3% chord of LE
+
+        // V3 B-spline X-movement (kept for V3 compatibility, not used in V1)
+        int m_LEXPoints{2};               // Number of LE-adjacent control points with X movement
+        double m_LEXBoundsScale{0.2};     // X bounds = Y bounds * this factor
 
         std::vector<Node2d> m_OptimBaseNodes;
         std::vector<int> m_OptimBaseIndex;
