@@ -632,24 +632,10 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
                 }
             }
 
-            // 4. Insert phantom points near LE to enforce tangent continuity
-            // Phantom point distance: small fraction of chord
-            const double phantomDist = 0.001;  // 0.1% chord
-            const Node2d &lePoint = topNodes[leOptimIndex];
-
-            // For top surface: phantom point just before LE (at end of topNodes)
-            // Tangent points opposite to parametric direction (upward for top surface)
-            Node2d phantomTop(lePoint.x - phantomDist * m_BaseLETangent.x,
-                              lePoint.y - phantomDist * m_BaseLETangent.y);
-            topNodes.push_back(phantomTop);
-
-            // For bottom surface: phantom point just after LE (at start of botNodes)
-            // Tangent points along parametric direction (downward for bottom surface)
-            Node2d phantomBot(lePoint.x + phantomDist * m_BaseLETangent.x,
-                              lePoint.y + phantomDist * m_BaseLETangent.y);
-            botNodes.insert(botNodes.begin(), phantomBot);
-
-            // 5. Build separate cubic splines for top and bottom
+            // 4. Build separate cubic splines for top and bottom
+            // Note: Phantom points removed - they caused spline oscillation/loops at LE.
+            // Both splines share the LE point for C0 continuity; tangent continuity
+            // is not enforced but the LE blend region (m_LEBlendChord) handles this.
             CubicSpline topSpline, botSpline;
             // Set output size before approximate() - it uses outputSize() internally
             const int splineOutputPts = 100;  // Smooth output resolution
@@ -663,21 +649,20 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
                 std::cerr << "\n=== SPLIT SPLINE DEBUG (createOptimizedFoil) ===" << std::endl;
                 std::cerr << "nOptim=" << nOptim << " leOptimIndex=" << leOptimIndex << std::endl;
                 std::cerr << "topNodes.size()=" << topNodes.size() << " botNodes.size()=" << botNodes.size() << std::endl;
-                std::cerr << "LE tangent: (" << m_BaseLETangent.x << ", " << m_BaseLETangent.y << ")" << std::endl;
-                std::cerr << "\nTop nodes (TE -> LE -> phantom):" << std::endl;
+                std::cerr << "\nTop nodes (TE -> LE):" << std::endl;
                 for(size_t i = 0; i < topNodes.size(); ++i)
                     std::cerr << "  [" << i << "] x=" << topNodes[i].x << " y=" << topNodes[i].y << std::endl;
-                std::cerr << "\nBot nodes (phantom -> LE -> TE):" << std::endl;
+                std::cerr << "\nBot nodes (LE -> TE):" << std::endl;
                 for(size_t i = 0; i < botNodes.size(); ++i)
                     std::cerr << "  [" << i << "] x=" << botNodes[i].x << " y=" << botNodes[i].y << std::endl;
                 std::cerr << "\nSpline output sizes: top=" << topSpline.outputPts().size()
                           << " bot=" << botSpline.outputPts().size() << std::endl;
             }
 
-            // 6. Sample splines to create smoothed output
-            // topNodes has (leOptimIndex + 1) original points + 1 phantom = leOptimIndex + 2 total
-            // botNodes has (nOptim - leOptimIndex) original points + 1 phantom = nOptim - leOptimIndex + 1 total
-            // Output should have nOptim points total
+            // 5. Sample splines to create smoothed output
+            // topNodes: (leOptimIndex + 1) points from TE to LE
+            // botNodes: (nOptim - leOptimIndex) points from LE to TE
+            // Output: nOptim points total
 
             const auto &topOut = topSpline.outputPts();
             const auto &botOut = botSpline.outputPts();
@@ -689,27 +674,29 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
 
             if(topOutSize >= 10 && botOutSize >= 10)
             {
-                // Top surface: sample from TE (index 0) toward LE, skip last 2 (phantom region)
-                const int topEndIdx = topOutSize - 2;
+                // Top surface: sample from TE (index 0) up to but not including LE
+                // topOut[0] = TE, topOut[topOutSize-1] = LE
                 for(int i = 0; i < leOptimIndex; ++i)
                 {
-                    int idx = (leOptimIndex > 1) ? i * topEndIdx / (leOptimIndex - 1) : 0;
-                    idx = std::max(0, std::min(idx, topEndIdx));
+                    // Map i in [0, leOptimIndex-1] to topOut index in [0, topOutSize-2]
+                    int idx = (leOptimIndex > 1) ? i * (topOutSize - 2) / (leOptimIndex - 1) : 0;
+                    idx = std::max(0, std::min(idx, topOutSize - 2));
                     newBaseNodes.push_back(topOut[idx]);
                 }
 
-                // Explicitly add LE point (the original LE, not the phantom)
-                newBaseNodes.push_back(topNodes[leOptimIndex]);
+                // Add LE point from top spline (last output point)
+                newBaseNodes.push_back(topOut[topOutSize - 1]);
 
-                // Bottom surface: sample from after phantom toward TE
+                // Bottom surface: sample from just after LE toward TE
+                // botOut[0] = LE, botOut[botOutSize-1] = TE
                 const int nBotSample = nOptim - leOptimIndex - 1;
-                const int botStartIdx = 2;
                 for(int i = 0; i < nBotSample; ++i)
                 {
+                    // Map i in [0, nBotSample-1] to botOut index in [1, botOutSize-1]
                     int idx = (nBotSample > 1)
-                        ? botStartIdx + i * (botOutSize - 1 - botStartIdx) / (nBotSample - 1)
+                        ? 1 + i * (botOutSize - 2) / (nBotSample - 1)
                         : botOutSize - 1;
-                    idx = std::max(botStartIdx, std::min(idx, botOutSize - 1));
+                    idx = std::max(1, std::min(idx, botOutSize - 1));
                     newBaseNodes.push_back(botOut[idx]);
                 }
             }
@@ -1426,21 +1413,7 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                 }
             }
 
-            // 4. Insert phantom points near LE to enforce tangent continuity
-            const double phantomDist = 0.001;
-            const Node2d &lePoint = topNodes[leOptimIndex];
-
-            // Tangent points opposite to parametric direction (upward for top surface)
-            Node2d phantomTop(lePoint.x - phantomDist * m_BaseLETangent.x,
-                              lePoint.y - phantomDist * m_BaseLETangent.y);
-            topNodes.push_back(phantomTop);
-
-            // Tangent points along parametric direction (downward for bottom surface)
-            Node2d phantomBot(lePoint.x + phantomDist * m_BaseLETangent.x,
-                              lePoint.y + phantomDist * m_BaseLETangent.y);
-            botNodes.insert(botNodes.begin(), phantomBot);
-
-            // 5. Build separate cubic splines
+            // 4. Build separate cubic splines (no phantom points - they cause oscillation)
             CubicSpline topSpline, botSpline;
             const int splineOutputPts = 100;
             topSpline.setOutputSize(splineOutputPts);
@@ -1457,11 +1430,10 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                 const auto &botOut = botSpline.outputPts();
                 std::cout << "topSpline.outputPts().size()=" << topOut.size()
                           << " botSpline.outputPts().size()=" << botOut.size() << std::endl;
-                std::cout << "LE tangent: (" << m_BaseLETangent.x << ", " << m_BaseLETangent.y << ")" << std::endl;
-                std::cout << "Top spline output (last 5 - near LE/phantom):" << std::endl;
+                std::cout << "Top spline output (last 5 - near LE):" << std::endl;
                 for(size_t i = topOut.size()-5; i < topOut.size(); ++i)
                     std::cout << "  [" << i << "] x=" << topOut[i].x << " y=" << topOut[i].y << std::endl;
-                std::cout << "Bot spline output (first 5 - near phantom/LE):" << std::endl;
+                std::cout << "Bot spline output (first 5 - near LE):" << std::endl;
                 for(size_t i = 0; i < 5 && i < botOut.size(); ++i)
                     std::cout << "  [" << i << "] x=" << botOut[i].x << " y=" << botOut[i].y << std::endl;
             }
@@ -1479,9 +1451,9 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             }
             else
             {
-                // 6. Sample splines to create smoothed output
-                // The phantom points are at topOut[last] and botOut[0], very close to LE
-                // Skip phantom regions and explicitly add LE point
+                // 5. Sample splines to create smoothed output
+                // topNodes: (leOptimIndex + 1) points from TE to LE
+                // botNodes: (nOptim - leOptimIndex) points from LE to TE
                 const auto &topOut = topSpline.outputPts();
                 const auto &botOut = botSpline.outputPts();
                 const int topOutSize = int(topOut.size());
@@ -1489,28 +1461,25 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
 
                 if(topOutSize >= 10 && botOutSize >= 10)
                 {
-                    // Top surface: sample from TE (index 0) toward LE, skip last 2 (phantom region)
-                    const int topEndIdx = topOutSize - 2; // Skip phantom region
-                    for(int i = 0; i < leOptimIndex; ++i) // leOptimIndex points, not including LE
+                    // Top surface: sample from TE (index 0) up to but not including LE
+                    for(int i = 0; i < leOptimIndex; ++i)
                     {
-                        int idx = (leOptimIndex > 1) ? i * topEndIdx / (leOptimIndex - 1) : 0;
-                        idx = std::max(0, std::min(idx, topEndIdx));
+                        int idx = (leOptimIndex > 1) ? i * (topOutSize - 2) / (leOptimIndex - 1) : 0;
+                        idx = std::max(0, std::min(idx, topOutSize - 2));
                         newBaseNodes.push_back(topOut[idx]);
                     }
 
-                    // Explicitly add LE point (the original LE, not the phantom)
-                    // topNodes[leOptimIndex] is LE (phantom was appended after it at index 41)
-                    newBaseNodes.push_back(topNodes[leOptimIndex]);
+                    // Add LE point from top spline (last output point)
+                    newBaseNodes.push_back(topOut[topOutSize - 1]);
 
-                    // Bottom surface: sample from after phantom toward TE
+                    // Bottom surface: sample from just after LE toward TE
                     const int nBotSample = nOptim - leOptimIndex - 1;
-                    const int botStartIdx = 2; // Skip only phantom point
                     for(int i = 0; i < nBotSample; ++i)
                     {
                         int idx = (nBotSample > 1)
-                            ? botStartIdx + i * (botOutSize - 1 - botStartIdx) / (nBotSample - 1)
+                            ? 1 + i * (botOutSize - 2) / (nBotSample - 1)
                             : botOutSize - 1;
-                        idx = std::max(botStartIdx, std::min(idx, botOutSize - 1));
+                        idx = std::max(1, std::min(idx, botOutSize - 1));
                         newBaseNodes.push_back(botOut[idx]);
                     }
                 }
