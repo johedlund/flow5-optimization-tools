@@ -73,7 +73,9 @@ int main(int argc, char **argv)
     task.initVariablesFromFoil();
     task.setTargetAlpha(pPolar->aoaSpec());
     task.setNObjectives(1);
-    task.setObjective(0, OptObjective("Cl", 0, true, 0.0, 0.0, xfl::EQUALIZE));
+    task.setObjective(0, OptObjective("Cd", 0, true, 0.0, 0.0, xfl::EQUALIZE));
+    task.setObjectiveType(PSOTaskFoil::ObjectiveType::MinimizeCd);
+    task.setTargetCl(0.73);
 
     // 0. MISSING TARGET (Invalid Spec)
     std::cout << "Test 0: Missing Target (Invalid Spec)\n";
@@ -113,15 +115,15 @@ int main(int argc, char **argv)
     PSOTask *base = &task;
     base->calcFitness(&particle, false, false);
 
-    const double cl = particle.fitness(0);
-    // Reasonable Cl for NACA 2412 at 2 deg Re=1e6 is approx 0.4 - 0.5
-    const bool happyOk = particle.isConverged() 
-                      && isFinite(cl) 
-                      && std::fabs(cl) < 10.0 
-                      && cl != OPTIM_PENALTY;
+    const double cd = particle.fitness(0);
+    // Reasonable Cd for NACA 2412 at Cl=0.73, Re=1e6 is approx 0.006-0.015
+    const bool happyOk = particle.isConverged()
+                      && isFinite(cd)
+                      && cd > 0.0 && cd < 0.1
+                      && cd != OPTIM_PENALTY;
 
     std::cout << "  Converged: " << (particle.isConverged() ? "true" : "false") << "\n";
-    std::cout << "  Cl: " << cl << "\n";
+    std::cout << "  Cd: " << cd << "\n";
     std::cout << "  Result: " << (happyOk ? "PASS" : "FAIL") << "\n";
 
 
