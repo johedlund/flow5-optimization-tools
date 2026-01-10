@@ -612,12 +612,21 @@ void OptimizationPanel::onRun()
     }
 
     m_pGraph->setName(QString("Optimization Progress - %1").arg(objectiveLabel));
-    m_pGraph->setYVariableList({QString("Fitness (%1)").arg(objectiveLabel), "Metric"});
+
+    // Get metric label for right Y axis (use first objective's metric)
+    QString metricLabel = "Metric";
+    if(!m_ObjectiveRows.isEmpty() && m_ObjectiveRows.first()->objectiveCombo) {
+        auto objType = static_cast<PSOTaskFoil::ObjectiveType>(
+            m_ObjectiveRows.first()->objectiveCombo->currentData().toInt());
+        metricLabel = objectiveMetricLabel(objType);
+    }
+
+    m_pGraph->setYVariableList({QString("Fitness (%1)").arg(objectiveLabel), metricLabel});
     m_pGraph->setVariables(0, 0, 1);
     if(m_pFitnessCurve)
         m_pFitnessCurve->setName(QString("Fitness (%1)").arg(objectiveLabel));
     if(m_pMetricCurve)
-        m_pMetricCurve->setName("Metric");
+        m_pMetricCurve->setName(metricLabel);
 
     m_BestValid = false;
 
@@ -860,6 +869,15 @@ void OptimizationPanel::customEvent(QEvent *event)
             {
                 if(m_pFitnessCurve)
                     m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
+
+                // Add metric value to right Y axis (use first objective's metric)
+                if(m_pMetricCurve && !m_ObjectiveRows.isEmpty() && m_ObjectiveRows.first()->objectiveCombo)
+                {
+                    auto objType = static_cast<PSOTaskFoil::ObjectiveType>(
+                        m_ObjectiveRows.first()->objectiveCombo->currentData().toInt());
+                    double metricValue = objectiveMetricFromFitness(objType, bestFitness);
+                    m_pMetricCurve->appendPoint(pEvent->iter(), metricValue);
+                }
             }
 
             // Build objective label for display
