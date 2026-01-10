@@ -285,12 +285,13 @@ int main(int argc, char **argv)
     minTask.initVariablesFromFoil();
 
     // With only 3 points and LE/TE fixed, expect 0 or very few variables
+    // V1 now adds X+Y variables for mid-chord points (20-80%), so expect up to 2 for 50% chord point
     const int minVars = minTask.nVariables();
     // OK if it handles gracefully (zero vars or small number)
-    const bool minOk = (minVars <= 1);
+    const bool minOk = (minVars <= 2);
 
     std::cout << "  Foil points: 3\n";
-    std::cout << "  Variables: " << minVars << " (Expected: 0 or 1 with LE/TE fixed)\n";
+    std::cout << "  Variables: " << minVars << " (Expected: 0-2 with LE/TE fixed, X+Y for mid-chord)\n";
     std::cout << "  Result: " << (minOk ? "PASS" : "FAIL") << "\n";
 
     // 8. V3 PRESET HANDLING (B-spline control points)

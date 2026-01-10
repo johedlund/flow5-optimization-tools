@@ -1219,6 +1219,11 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     const double chord = maxX - minX;
     const double leExclusionX = leX + m_LEBlendChord * chord;
 
+    // X movement bounds for mid-chord points (20-80% chord)
+    const double xDelta = delta * 2.0;  // X bounds = 2x Y bounds
+    const double xMoveMinChord = 0.20;  // Start X movement at 20% chord
+    const double xMoveMaxChord = 0.80;  // End X movement at 80% chord
+
     if(m_bSymmetric)
     {
         // Symmetric: Only optimize upper surface (indices 1 to leOptimIndex-1)
@@ -1231,6 +1236,17 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             // Skip points within LE exclusion zone
             if(x < leExclusionX)
                 continue;
+
+            const double xNorm = (x - leX) / chord;
+
+            // Add X variable for mid-chord points (20-80% chord)
+            if(xNorm >= xMoveMinChord && xNorm <= xMoveMaxChord)
+            {
+                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), x - xDelta, x + xDelta);
+                m_VarToBase.push_back(i);
+                m_VarIsX.push_back(true);
+                m_VarIsTop.push_back(true);
+            }
 
             // Add Y variable
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), y - delta, y + delta);
@@ -1253,11 +1269,23 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             if(x < leExclusionX)
                 continue;
 
+            const double xNorm = (x - leX) / chord;
+            const bool isTop = (i < leOptimIndex);
+
+            // Add X variable for mid-chord points (20-80% chord)
+            if(xNorm >= xMoveMinChord && xNorm <= xMoveMaxChord)
+            {
+                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), x - xDelta, x + xDelta);
+                m_VarToBase.push_back(i);
+                m_VarIsX.push_back(true);
+                m_VarIsTop.push_back(isTop);
+            }
+
             // Add Y variable
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), y - delta, y + delta);
             m_VarToBase.push_back(i);
             m_VarIsX.push_back(false);
-            m_VarIsTop.push_back(i < leOptimIndex);  // Top if before LE index
+            m_VarIsTop.push_back(isTop);
         }
 
         if(m_VarToBase.empty() && nOptim > 2)
