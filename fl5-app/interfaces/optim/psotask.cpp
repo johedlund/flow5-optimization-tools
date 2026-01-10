@@ -161,6 +161,18 @@ void PSOTask::restoreDefaults()
 }
 
 
+void PSOTask::reset()
+{
+    m_Swarm.clear();
+    m_Pareto.clear();
+    m_Iter = 0;
+    m_Status = xfl::PENDING;
+    m_bConverged = false;
+    m_StagnationCounter = 0;
+    m_BestGlobalFitness = OPTIM_PENALTY;
+}
+
+
 void PSOTask::onMakeParticleSwarm()
 {
     m_Swarm.resize(s_PopSize);

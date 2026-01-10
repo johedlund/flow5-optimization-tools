@@ -353,6 +353,15 @@ void OptimizationPanel::setupUI()
                             "Higher values allow better convergence but take longer.");
     runLayout->addRow("Max Iterations:", m_sbMaxIter);
 
+    m_sbBatchRuns = new QSpinBox(this);
+    m_sbBatchRuns->setRange(1, 100);
+    m_sbBatchRuns->setValue(1);
+    m_sbBatchRuns->setSuffix(" runs");
+    m_sbBatchRuns->setToolTip("Number of optimization runs (batch mode).\n"
+                              "Each run uses different random seeding.\n"
+                              "Best result across all runs is kept.");
+    runLayout->addRow("Batch Runs:", m_sbBatchRuns);
+
     m_sbReynolds = new QDoubleSpinBox(this);
     m_sbReynolds->setRange(0.01, 100.0);
     m_sbReynolds->setValue(1.0);
@@ -709,9 +718,52 @@ void OptimizationPanel::onRun()
     m_OldIterLimit = XFoilTask::maxIterations();
     XFoilTask::setMaxIterations(30);
 
-    m_pTask->onMakeParticleSwarm();
-    m_pTask->onStartIterations();
-    
+    // Batch run loop
+    m_TotalRuns = m_sbBatchRuns->value();
+    m_GlobalBestFitness = 1e12;
+    m_CurrentRun = 0;
+
+    for(m_CurrentRun = 1; m_CurrentRun <= m_TotalRuns; ++m_CurrentRun)
+    {
+        // Check for cancellation between runs
+        if(m_pTask && m_pTask->isCancelled()) break;
+
+        // Log run start
+        if(m_TotalRuns > 1)
+            log(QString("=== Starting Run %1 of %2 ===").arg(m_CurrentRun).arg(m_TotalRuns));
+
+        // Clear graph for new run (except first)
+        if(m_CurrentRun > 1)
+        {
+            if(m_pFitnessCurve) m_pFitnessCurve->clear();
+            m_pTask->reset();
+        }
+
+        // Run optimization
+        m_pTask->onMakeParticleSwarm();
+        m_pTask->onStartIterations();
+        // At this point, m_BestParticle is set via OPTIM_END_EVENT handler
+
+        // Compare with global best
+        if(m_BestValid && m_BestParticle.fitness(0) < m_GlobalBestFitness)
+        {
+            m_GlobalBestFitness = m_BestParticle.fitness(0);
+            m_GlobalBestParticle = m_BestParticle;
+            if(m_TotalRuns > 1)
+                log(QString("New global best! Fitness: %1").arg(m_GlobalBestFitness, 0, 'g', 6));
+            updateCandidatePreview(m_GlobalBestParticle);
+        }
+    }
+
+    // Final result: use global best (may differ from last run's best)
+    if(m_TotalRuns > 1 && m_GlobalBestFitness < 1e10)
+    {
+        m_BestParticle = m_GlobalBestParticle;
+        m_BestValid = true;
+        log(QString("=== Batch complete. Best fitness: %1 ===").arg(m_GlobalBestFitness, 0, 'g', 6));
+        updateCandidatePreview(m_BestParticle);
+    }
+
     onTaskFinished();
 }
 
@@ -771,9 +823,14 @@ void OptimizationPanel::customEvent(QEvent *event)
     {
         OptimEvent *pEvent = static_cast<OptimEvent*>(event);
         if(pEvent) {
-             m_ProgressBar->setRange(0, pEvent->iBest()); 
-             m_ProgressBar->setValue(pEvent->iter()); 
-             m_StatusLabel->setText(QString("Building Swarm %1/%2").arg(pEvent->iter()).arg(pEvent->iBest()));
+             m_ProgressBar->setRange(0, pEvent->iBest());
+             m_ProgressBar->setValue(pEvent->iter());
+             if(m_TotalRuns > 1)
+                 m_StatusLabel->setText(QString("Run %1/%2 - Building Swarm %3/%4")
+                     .arg(m_CurrentRun).arg(m_TotalRuns)
+                     .arg(pEvent->iter()).arg(pEvent->iBest()));
+             else
+                 m_StatusLabel->setText(QString("Building Swarm %1/%2").arg(pEvent->iter()).arg(pEvent->iBest()));
         }
     }
     else if(event->type() == OPTIM_MAKESWARM_EVENT)
@@ -787,7 +844,12 @@ void OptimizationPanel::customEvent(QEvent *event)
         OptimEvent *pEvent = static_cast<OptimEvent*>(event);
         if(pEvent) {
             m_ProgressBar->setValue(pEvent->iter());
-            m_StatusLabel->setText(QString("Iteration %1 / %2").arg(pEvent->iter()).arg(PSOTask::s_MaxIter));
+            if(m_TotalRuns > 1)
+                m_StatusLabel->setText(QString("Run %1/%2 - Iteration %3/%4")
+                    .arg(m_CurrentRun).arg(m_TotalRuns)
+                    .arg(pEvent->iter()).arg(PSOTask::s_MaxIter));
+            else
+                m_StatusLabel->setText(QString("Iteration %1 / %2").arg(pEvent->iter()).arg(PSOTask::s_MaxIter));
 
             double bestFitness = pEvent->particle().fitness(0);
 

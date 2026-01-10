@@ -122,6 +122,8 @@ class PSOTask : public QObject
 
         static void restoreDefaults();
 
+        void reset();  // Reset task state for re-running (batch mode)
+
     protected:
         void postParticleEvent() const;
         void postOptEndEvent() const;

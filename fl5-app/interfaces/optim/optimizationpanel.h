@@ -153,9 +153,16 @@ private:
 
     // Run Parameters
     QSpinBox *m_sbMaxIter;
+    QSpinBox *m_sbBatchRuns;  // Number of optimization runs (batch mode)
     QDoubleSpinBox *m_sbReynolds;
     QDoubleSpinBox *m_sbMach;
     QDoubleSpinBox *m_sbNCrit;
+
+    // Batch run tracking
+    int m_CurrentRun{0};              // Current run index (1-based)
+    int m_TotalRuns{1};               // Total runs configured
+    Particle m_GlobalBestParticle;    // Best across all runs
+    double m_GlobalBestFitness{1e12}; // Track best fitness
 
     // Mode B (3D coupling)
     QRadioButton *m_rbModeA;
