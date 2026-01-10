@@ -27,6 +27,7 @@
 #include <interfaces/optim/psotask.h>
 
 #include <api/bspline.h>
+#include <api/vector2d.h>
 #include <node2d.h>
 
 class Foil;
@@ -196,6 +197,11 @@ class PSOTaskFoil : public PSOTask
         std::vector<int> m_OptimBaseIndex;
         std::vector<int> m_VarToBase;
         std::vector<bool> m_VarIsX;       // true if variable is X coordinate, false for Y
+        std::vector<bool> m_VarIsTop;     // true if variable is on top surface, false for bottom
+
+        // LE tangent for split spline approach (cached from original foil)
+        Vector2d m_BaseLETangent{0.0, 1.0};  // Default: vertical (perpendicular to chord)
+        int m_LEOptimIndex{0};               // Index of LE in m_OptimBaseNodes
 
         // Preset V2 members
         double m_BaseMaxCamber{0.0};

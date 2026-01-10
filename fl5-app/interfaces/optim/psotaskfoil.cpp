@@ -24,6 +24,7 @@
 
 #include <interfaces/optim/psotaskfoil.h>
 
+#include <api/cubicspline.h>
 #include <api/foil.h>
 #include <api/oppoint.h>
 #include <api/polar.h>
@@ -545,81 +546,168 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
             pNewFoil->setBaseNodes(output);
         }
     }
-    else // V1
+    else // V1 - Split spline approach
     {
-        if(!m_OptimBaseNodes.empty())
-            pNewFoil->setBaseNodes(m_OptimBaseNodes);
-
-        // Find LE index and chord in the optimized base nodes
-        int leOptimIndex = 0;
         const int nOptim = int(m_OptimBaseNodes.size());
-        double minX = m_OptimBaseNodes.empty() ? 0.0 : m_OptimBaseNodes[0].x;
-        double maxX = minX;
-        for(int i = 1; i < nOptim; ++i)
-        {
-            if(m_OptimBaseNodes[i].x < minX)
-            {
-                minX = m_OptimBaseNodes[i].x;
-                leOptimIndex = i;
-            }
-            if(m_OptimBaseNodes[i].x > maxX)
-                maxX = m_OptimBaseNodes[i].x;
-        }
-        const double chord = maxX - minX;
+        // Split spline approach for LE protection
+        // TODO: Debug - split spline creates invalid geometry, needs further investigation
+        const bool useSplitSpline = false;
 
-        // Apply particle position values (X or Y depending on m_VarIsX)
-        for(int i=0; i<int(m_VarToBase.size()); ++i)
+        if(nOptim < 3 || !useSplitSpline)
         {
-            const int baseIndex = m_VarToBase[i];
-            if(i < int(m_VarIsX.size()) && m_VarIsX[i])
-                pNewFoil->setBaseNode(baseIndex, p.pos(i), pNewFoil->yb(baseIndex));
+            // Simple direct modification approach
+            if(!m_OptimBaseNodes.empty())
+                pNewFoil->setBaseNodes(m_OptimBaseNodes);
+
+            // Apply particle position values directly
+            for(int v = 0; v < int(m_VarToBase.size()); ++v)
+            {
+                const int baseIndex = m_VarToBase[v];
+                if(v < int(m_VarIsX.size()) && m_VarIsX[v])
+                    pNewFoil->setBaseNode(baseIndex, p.pos(v), pNewFoil->yb(baseIndex));
+                else
+                    pNewFoil->setBaseNode(baseIndex, pNewFoil->xb(baseIndex), p.pos(v));
+            }
+        }
+        else
+        {
+            const int leOptimIndex = m_LEOptimIndex;
+
+            // 1. Create working copies of top and bottom surface nodes
+            // Top surface: indices 0 to leOptimIndex (TE to LE)
+            // Bottom surface: indices leOptimIndex to nOptim-1 (LE to TE)
+            std::vector<Node2d> topNodes, botNodes;
+            topNodes.reserve(leOptimIndex + 2);  // +1 for phantom point
+            botNodes.reserve(nOptim - leOptimIndex + 1);
+
+            for(int i = 0; i <= leOptimIndex; ++i)
+                topNodes.push_back(m_OptimBaseNodes[i]);
+            for(int i = leOptimIndex; i < nOptim; ++i)
+                botNodes.push_back(m_OptimBaseNodes[i]);
+
+            // 2. Apply particle offsets to each surface
+            for(int v = 0; v < int(m_VarToBase.size()); ++v)
+            {
+                const int baseIdx = m_VarToBase[v];
+                const double newVal = p.pos(v);
+
+                if(v < int(m_VarIsX.size()) && m_VarIsX[v])
+                {
+                    // X coordinate change
+                    if(v < int(m_VarIsTop.size()) && m_VarIsTop[v])
+                        topNodes[baseIdx].x = newVal;
+                    else
+                        botNodes[baseIdx - leOptimIndex].x = newVal;
+                }
+                else
+                {
+                    // Y coordinate change
+                    if(v < int(m_VarIsTop.size()) && m_VarIsTop[v])
+                        topNodes[baseIdx].y = newVal;
+                    else
+                        botNodes[baseIdx - leOptimIndex].y = newVal;
+                }
+            }
+
+            // 3. For symmetric mode, mirror top to bottom
+            if(m_bSymmetric)
+            {
+                // Set LE to y=0 for perfect symmetry
+                topNodes[leOptimIndex].y = 0.0;
+                botNodes[0].y = 0.0;
+
+                // Mirror top surface to bottom (excluding LE and TE)
+                const int nTop = int(topNodes.size());
+                const int nBot = int(botNodes.size());
+                for(int i = 1; i < nTop - 1 && i < nBot - 1; ++i)
+                {
+                    // Bottom point i mirrors top point (nTop-1-i) from LE
+                    const int topMirrorIdx = i;  // Points from LE going toward TE on bottom
+                    if(topMirrorIdx < nTop)
+                    {
+                        botNodes[i].y = -topNodes[topMirrorIdx].y;
+                    }
+                }
+            }
+
+            // 4. Insert phantom points near LE to enforce tangent continuity
+            // Phantom point distance: small fraction of chord
+            const double phantomDist = 0.001;  // 0.1% chord
+            const Node2d &lePoint = topNodes[leOptimIndex];
+
+            // For top surface: phantom point just before LE (at end of topNodes)
+            // Tangent points "into" the LE from top side
+            Node2d phantomTop(lePoint.x + phantomDist * m_BaseLETangent.x,
+                              lePoint.y + phantomDist * m_BaseLETangent.y);
+            topNodes.push_back(phantomTop);
+
+            // For bottom surface: phantom point just after LE (at start of botNodes)
+            // Tangent points "out of" the LE toward bottom side (opposite direction)
+            Node2d phantomBot(lePoint.x - phantomDist * m_BaseLETangent.x,
+                              lePoint.y - phantomDist * m_BaseLETangent.y);
+            botNodes.insert(botNodes.begin(), phantomBot);
+
+            // 5. Build separate cubic splines for top and bottom
+            CubicSpline topSpline, botSpline;
+            // Set output size before approximate() - it uses outputSize() internally
+            const int splineOutputPts = 100;  // Smooth output resolution
+            topSpline.setOutputSize(splineOutputPts);
+            botSpline.setOutputSize(splineOutputPts);
+            topSpline.approximate(int(topNodes.size()), topNodes);
+            botSpline.approximate(int(botNodes.size()), botNodes);
+
+            // 6. Sample splines to create smoothed output
+            // topNodes has (leOptimIndex + 1) original points + 1 phantom = leOptimIndex + 2 total
+            // botNodes has (nOptim - leOptimIndex) original points + 1 phantom = nOptim - leOptimIndex + 1 total
+            // Output should have nOptim points total
+
+            const auto &topOut = topSpline.outputPts();
+            const auto &botOut = botSpline.outputPts();
+            const int topOutSize = int(topOut.size());
+            const int botOutSize = int(botOut.size());
+
+            std::vector<Node2d> newBaseNodes;
+            newBaseNodes.reserve(nOptim);
+
+            if(topOutSize >= 2 && botOutSize >= 2)
+            {
+                // Calculate how many output points correspond to real nodes vs phantom
+                // For top: phantom is at end, so use first ~95% of output
+                // For bottom: phantom is at start, so use last ~95% of output
+                const double phantomFrac = 1.0 / double(topNodes.size());
+
+                // Sample top surface (TE to LE)
+                const int nTopSample = leOptimIndex + 1;  // Number of points we want
+                const double topEndT = 1.0 - phantomFrac;  // Stop before phantom
+                for(int i = 0; i < nTopSample; ++i)
+                {
+                    double t = (nTopSample > 1) ? double(i) / double(nTopSample - 1) * topEndT : 0.0;
+                    int idx = int(t * (topOutSize - 1));
+                    idx = std::max(0, std::min(idx, topOutSize - 1));
+                    newBaseNodes.push_back(topOut[idx]);
+                }
+
+                // Sample bottom surface (skip LE, go from just after LE to TE)
+                const int nBotSample = nOptim - leOptimIndex - 1;  // Exclude LE (already added)
+                const double botStartT = 1.0 / double(botNodes.size());  // Start after phantom
+                for(int i = 0; i < nBotSample; ++i)
+                {
+                    double t = botStartT + (nBotSample > 1 ? double(i + 1) / double(nBotSample) * (1.0 - botStartT) : (1.0 - botStartT));
+                    int idx = int(t * (botOutSize - 1));
+                    idx = std::max(0, std::min(idx, botOutSize - 1));
+                    newBaseNodes.push_back(botOut[idx]);
+                }
+            }
             else
-                pNewFoil->setBaseNode(baseIndex, pNewFoil->xb(baseIndex), p.pos(i));
-        }
-
-        // LE blend: smoothly transition from original shape near LE to optimized shape
-        // This prevents spline oscillations from distorting the LE region
-        if(m_LEBlendChord > 0.0 && chord > 0.0)
-        {
-            const double leBlendEnd = minX + m_LEBlendChord * chord;
-            for(int i = 0; i < nOptim; ++i)
             {
-                if(i == leOptimIndex)
-                    continue;  // Skip LE point itself
-
-                const double x = pNewFoil->xb(i);
-                if(x < leBlendEnd)
-                {
-                    // Calculate blend factor: 0 at LE, 1 at blend end (smoothstep)
-                    const double t = (x - minX) / (leBlendEnd - minX);
-                    const double blend = t * t * (3.0 - 2.0 * t);  // smoothstep
-
-                    // Blend Y between original and optimized
-                    const double originalY = m_OptimBaseNodes[i].y;
-                    const double optimizedY = pNewFoil->yb(i);
-                    const double blendedY = originalY * (1.0 - blend) + optimizedY * blend;
-                    pNewFoil->setBaseNode(i, x, blendedY);
-                }
+                // Fallback: use original nodes without phantom points
+                for(int i = 0; i <= leOptimIndex; ++i)
+                    newBaseNodes.push_back(m_OptimBaseNodes[i]);
+                for(int i = leOptimIndex + 1; i < nOptim; ++i)
+                    newBaseNodes.push_back(m_OptimBaseNodes[i]);
             }
-        }
 
-        // For symmetric mode, mirror upper surface to lower surface
-        if(m_bSymmetric && nOptim > 2)
-        {
-            // Upper surface: indices 1 to leOptimIndex-1
-            // Lower surface: indices leOptimIndex+1 to nOptim-2
-            // Mirror: upper[k] <-> lower[nOptim-1-k]
-            for(int i = 1; i < leOptimIndex; ++i)
-            {
-                const int mirrorIndex = nOptim - 1 - i;
-                if(mirrorIndex > leOptimIndex && mirrorIndex < nOptim - 1)
-                {
-                    double y = pNewFoil->yb(i);
-                    pNewFoil->setBaseNode(mirrorIndex, pNewFoil->xb(mirrorIndex), -y);
-                }
-            }
-            // Set LE to y=0 for perfect symmetry
-            pNewFoil->setBaseNode(leOptimIndex, pNewFoil->xb(leOptimIndex), 0.0);
+            pNewFoil->setBaseNodes(newBaseNodes);
         }
     }
 
@@ -1029,6 +1117,19 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             maxX = m_OptimBaseNodes[i].x;
     }
 
+    // Store LE index for use in createOptimizedFoil/calcFitness
+    m_LEOptimIndex = leOptimIndex;
+
+    // Compute and cache LE tangent from original foil's spline
+    // The tangent at LE points perpendicular to the chord line
+    double dx = 0.0, dy = 0.0;
+    m_pFoil->cubicSpline().splineDerivative(m_pFoil->CSfracLE(), dx, dy);
+    const double len = std::sqrt(dx*dx + dy*dy);
+    if(len > 1.0e-10)
+        m_BaseLETangent.set(dx/len, dy/len);
+    else
+        m_BaseLETangent.set(0.0, 1.0);  // Default: vertical
+
     const double maxThickness = std::fabs(m_pFoil->maxThickness());
     double delta = (yDelta > 0.0) ? yDelta : std::max(0.002, 0.2 * maxThickness);
     delta *= m_BoundsScale;
@@ -1036,6 +1137,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     const int nOptim = int(m_OptimBaseNodes.size());
     m_Variable.reserve(nOptim);
     m_VarIsX.clear();
+    m_VarIsTop.clear();
 
     // LE exclusion zone: skip variables for points too close to LE
     // High-leverage points near LE cause LE distortion when moved
@@ -1060,6 +1162,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), y - delta, y + delta);
             m_VarToBase.push_back(i);
             m_VarIsX.push_back(false);
+            m_VarIsTop.push_back(true);  // Upper surface
         }
     }
     else
@@ -1080,6 +1183,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), y - delta, y + delta);
             m_VarToBase.push_back(i);
             m_VarIsX.push_back(false);
+            m_VarIsTop.push_back(i < leOptimIndex);  // Top if before LE index
         }
 
         if(m_VarToBase.empty() && nOptim > 2)
@@ -1092,6 +1196,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[mid]), y - delta, y + delta);
             m_VarToBase.push_back(mid);
             m_VarIsX.push_back(false);
+            m_VarIsTop.push_back(mid < leOptimIndex);
         }
     }
 
@@ -1230,75 +1335,154 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             workFoil.setBaseNodes(output);
         }
     }
-    else // V1
+    else // V1 - Split spline approach
     {
-        if(!m_OptimBaseNodes.empty())
-            workFoil.setBaseNodes(m_OptimBaseNodes);
-
-        // Find LE index and chord in the optimized base nodes
-        int leOptimIndex = 0;
         const int nOptim = int(m_OptimBaseNodes.size());
-        double minX = m_OptimBaseNodes.empty() ? 0.0 : m_OptimBaseNodes[0].x;
-        double maxX = minX;
-        for(int i = 1; i < nOptim; ++i)
-        {
-            if(m_OptimBaseNodes[i].x < minX)
-            {
-                minX = m_OptimBaseNodes[i].x;
-                leOptimIndex = i;
-            }
-            if(m_OptimBaseNodes[i].x > maxX)
-                maxX = m_OptimBaseNodes[i].x;
-        }
-        const double chord = maxX - minX;
+        // Split spline approach for LE protection
+        // TODO: Debug - split spline creates invalid geometry, needs further investigation
+        const bool useSplitSpline = false;
 
-        // Apply particle position values (X or Y depending on m_VarIsX)
-        for(int i=0; i<int(m_VarToBase.size()); ++i)
+        if(nOptim < 3 || !useSplitSpline)
         {
-            const int baseIndex = m_VarToBase[i];
-            if(i < int(m_VarIsX.size()) && m_VarIsX[i])
-                workFoil.setBaseNode(baseIndex, pParticle->pos(i), workFoil.yb(baseIndex));
+            // Simple direct modification approach
+            if(!m_OptimBaseNodes.empty())
+                workFoil.setBaseNodes(m_OptimBaseNodes);
+
+            // Apply particle position values directly
+            for(int v = 0; v < int(m_VarToBase.size()); ++v)
+            {
+                const int baseIndex = m_VarToBase[v];
+                if(v < int(m_VarIsX.size()) && m_VarIsX[v])
+                    workFoil.setBaseNode(baseIndex, pParticle->pos(v), workFoil.yb(baseIndex));
+                else
+                    workFoil.setBaseNode(baseIndex, workFoil.xb(baseIndex), pParticle->pos(v));
+            }
+        }
+        else
+        {
+            const int leOptimIndex = m_LEOptimIndex;
+
+            // 1. Create working copies of top and bottom surface nodes
+            std::vector<Node2d> topNodes, botNodes;
+            topNodes.reserve(leOptimIndex + 2);
+            botNodes.reserve(nOptim - leOptimIndex + 1);
+
+            for(int i = 0; i <= leOptimIndex; ++i)
+                topNodes.push_back(m_OptimBaseNodes[i]);
+            for(int i = leOptimIndex; i < nOptim; ++i)
+                botNodes.push_back(m_OptimBaseNodes[i]);
+
+            // 2. Apply particle offsets to each surface
+            for(int v = 0; v < int(m_VarToBase.size()); ++v)
+            {
+                const int baseIdx = m_VarToBase[v];
+                const double newVal = pParticle->pos(v);
+
+                if(v < int(m_VarIsX.size()) && m_VarIsX[v])
+                {
+                    if(v < int(m_VarIsTop.size()) && m_VarIsTop[v])
+                        topNodes[baseIdx].x = newVal;
+                    else
+                        botNodes[baseIdx - leOptimIndex].x = newVal;
+                }
+                else
+                {
+                    if(v < int(m_VarIsTop.size()) && m_VarIsTop[v])
+                        topNodes[baseIdx].y = newVal;
+                    else
+                        botNodes[baseIdx - leOptimIndex].y = newVal;
+                }
+            }
+
+            // 3. For symmetric mode, mirror top to bottom
+            if(m_bSymmetric)
+            {
+                topNodes[leOptimIndex].y = 0.0;
+                botNodes[0].y = 0.0;
+
+                const int nTop = int(topNodes.size());
+                const int nBot = int(botNodes.size());
+                for(int i = 1; i < nTop - 1 && i < nBot - 1; ++i)
+                {
+                    const int topMirrorIdx = i;
+                    if(topMirrorIdx < nTop)
+                        botNodes[i].y = -topNodes[topMirrorIdx].y;
+                }
+            }
+
+            // 4. Insert phantom points near LE to enforce tangent continuity
+            const double phantomDist = 0.001;
+            const Node2d &lePoint = topNodes[leOptimIndex];
+
+            Node2d phantomTop(lePoint.x + phantomDist * m_BaseLETangent.x,
+                              lePoint.y + phantomDist * m_BaseLETangent.y);
+            topNodes.push_back(phantomTop);
+
+            Node2d phantomBot(lePoint.x - phantomDist * m_BaseLETangent.x,
+                              lePoint.y - phantomDist * m_BaseLETangent.y);
+            botNodes.insert(botNodes.begin(), phantomBot);
+
+            // 5. Build separate cubic splines
+            CubicSpline topSpline, botSpline;
+            const int splineOutputPts = 100;
+            topSpline.setOutputSize(splineOutputPts);
+            botSpline.setOutputSize(splineOutputPts);
+            const bool topOk = topSpline.approximate(int(topNodes.size()), topNodes);
+            const bool botOk = botSpline.approximate(int(botNodes.size()), botNodes);
+
+            std::vector<Node2d> newBaseNodes;
+            newBaseNodes.reserve(nOptim);
+
+            // If spline creation failed, fall back to original nodes
+            if(!topOk || !botOk)
+            {
+                for(int i = 0; i <= leOptimIndex; ++i)
+                    newBaseNodes.push_back(m_OptimBaseNodes[i]);
+                for(int i = leOptimIndex + 1; i < nOptim; ++i)
+                    newBaseNodes.push_back(m_OptimBaseNodes[i]);
+            }
             else
-                workFoil.setBaseNode(baseIndex, workFoil.xb(baseIndex), pParticle->pos(i));
-        }
-
-        // LE blend: smoothly transition from original shape near LE to optimized shape
-        if(m_LEBlendChord > 0.0 && chord > 0.0)
-        {
-            const double leBlendEnd = minX + m_LEBlendChord * chord;
-            for(int i = 0; i < nOptim; ++i)
             {
-                if(i == leOptimIndex)
-                    continue;
+                // 6. Sample splines to create smoothed output
+                const auto &topOut = topSpline.outputPts();
+                const auto &botOut = botSpline.outputPts();
+                const int topOutSize = int(topOut.size());
+                const int botOutSize = int(botOut.size());
 
-                const double x = workFoil.xb(i);
-                if(x < leBlendEnd)
+                if(topOutSize >= 2 && botOutSize >= 2)
                 {
-                    const double t = (x - minX) / (leBlendEnd - minX);
-                    const double blend = t * t * (3.0 - 2.0 * t);  // smoothstep
+                    const double phantomFrac = 1.0 / double(topNodes.size());
 
-                    const double originalY = m_OptimBaseNodes[i].y;
-                    const double optimizedY = workFoil.yb(i);
-                    const double blendedY = originalY * (1.0 - blend) + optimizedY * blend;
-                    workFoil.setBaseNode(i, x, blendedY);
+                    const int nTopSample = leOptimIndex + 1;
+                    const double topEndT = 1.0 - phantomFrac;
+                    for(int i = 0; i < nTopSample; ++i)
+                    {
+                        double t = (nTopSample > 1) ? double(i) / double(nTopSample - 1) * topEndT : 0.0;
+                        int idx = int(t * (topOutSize - 1));
+                        idx = std::max(0, std::min(idx, topOutSize - 1));
+                        newBaseNodes.push_back(topOut[idx]);
+                    }
+
+                    const int nBotSample = nOptim - leOptimIndex - 1;
+                    const double botStartT = 1.0 / double(botNodes.size());
+                    for(int i = 0; i < nBotSample; ++i)
+                    {
+                        double t = botStartT + (nBotSample > 1 ? double(i + 1) / double(nBotSample) * (1.0 - botStartT) : (1.0 - botStartT));
+                        int idx = int(t * (botOutSize - 1));
+                        idx = std::max(0, std::min(idx, botOutSize - 1));
+                        newBaseNodes.push_back(botOut[idx]);
+                    }
                 }
-            }
-        }
-
-        // For symmetric mode, mirror upper surface to lower surface
-        if(m_bSymmetric && nOptim > 2)
-        {
-            for(int i = 1; i < leOptimIndex; ++i)
-            {
-                const int mirrorIndex = nOptim - 1 - i;
-                if(mirrorIndex > leOptimIndex && mirrorIndex < nOptim - 1)
+                else
                 {
-                    double y = workFoil.yb(i);
-                    workFoil.setBaseNode(mirrorIndex, workFoil.xb(mirrorIndex), -y);
+                    for(int i = 0; i <= leOptimIndex; ++i)
+                        newBaseNodes.push_back(m_OptimBaseNodes[i]);
+                    for(int i = leOptimIndex + 1; i < nOptim; ++i)
+                        newBaseNodes.push_back(m_OptimBaseNodes[i]);
                 }
-            }
-            // Set LE to y=0 for perfect symmetry
-            workFoil.setBaseNode(leOptimIndex, workFoil.xb(leOptimIndex), 0.0);
+            }  // end else (spline ok)
+
+            workFoil.setBaseNodes(newBaseNodes);
         }
     }
 
