@@ -127,6 +127,11 @@ class PSOTaskFoil : public PSOTask
         void setSymmetric(bool bSym) {m_bSymmetric = bSym;}
         bool isSymmetric() const {return m_bSymmetric;}
 
+        // X movement chord range (V1 preset)
+        void setXMoveChordRange(double minChord, double maxChord) {m_XMoveMinChord = minChord; m_XMoveMaxChord = maxChord;}
+        double xMoveMinChord() const {return m_XMoveMinChord;}
+        double xMoveMaxChord() const {return m_XMoveMaxChord;}
+
         void initVariablesFromFoil(double yDelta=0.0);
         void setPreset(PresetType preset) {m_Preset = preset;}
         void setObjectiveType(ObjectiveType type) {m_ObjectiveType = type;}
@@ -189,6 +194,10 @@ class PSOTaskFoil : public PSOTask
 
         // LE protection: blend optimized shape back toward original near LE
         double m_LEBlendChord{0.05};      // Blend region: 0-5% chord transitions from original to optimized
+
+        // V1 X movement chord range (control points outside this range only move in Y)
+        double m_XMoveMinChord{0.20};     // Start X movement at 20% chord
+        double m_XMoveMaxChord{0.80};     // End X movement at 80% chord
 
         // V3 B-spline X-movement (kept for V3 compatibility, not used in V1)
         int m_LEXPoints{2};               // Number of LE-adjacent control points with X movement

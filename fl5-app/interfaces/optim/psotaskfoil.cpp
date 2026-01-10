@@ -1219,10 +1219,8 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     const double chord = maxX - minX;
     const double leExclusionX = leX + m_LEBlendChord * chord;
 
-    // X movement bounds for mid-chord points (20-80% chord)
+    // X movement bounds for mid-chord points (configurable range)
     const double xDelta = delta * 2.0;  // X bounds = 2x Y bounds
-    const double xMoveMinChord = 0.20;  // Start X movement at 20% chord
-    const double xMoveMaxChord = 0.80;  // End X movement at 80% chord
 
     if(m_bSymmetric)
     {
@@ -1240,7 +1238,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             const double xNorm = (x - leX) / chord;
 
             // Add X variable for mid-chord points (20-80% chord)
-            if(xNorm >= xMoveMinChord && xNorm <= xMoveMaxChord)
+            if(xNorm >= m_XMoveMinChord && xNorm <= m_XMoveMaxChord)
             {
                 m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), x - xDelta, x + xDelta);
                 m_VarToBase.push_back(i);
@@ -1273,7 +1271,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             const bool isTop = (i < leOptimIndex);
 
             // Add X variable for mid-chord points (20-80% chord)
-            if(xNorm >= xMoveMinChord && xNorm <= xMoveMaxChord)
+            if(xNorm >= m_XMoveMinChord && xNorm <= m_XMoveMaxChord)
             {
                 m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), x - xDelta, x + xDelta);
                 m_VarToBase.push_back(i);

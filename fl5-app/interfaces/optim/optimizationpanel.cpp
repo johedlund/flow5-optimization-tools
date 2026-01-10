@@ -274,6 +274,29 @@ void OptimizationPanel::setupUI()
             this, &OptimizationPanel::updateOptimMarkersPreview);
     geoLayout->addRow("Bounds Scale:", m_sbBoundsScale);
 
+    // X movement chord range (V1 preset)
+    m_sbXMoveMin = new QDoubleSpinBox(this);
+    m_sbXMoveMin->setRange(0.0, 100.0);
+    m_sbXMoveMin->setValue(20.0);
+    m_sbXMoveMin->setSingleStep(5.0);
+    m_sbXMoveMin->setSuffix(" %");
+    m_sbXMoveMin->setToolTip("Minimum chord position for X movement.\n"
+                             "Control points before this position only move in Y.");
+    connect(m_sbXMoveMin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &OptimizationPanel::updateOptimMarkersPreview);
+    geoLayout->addRow("X Move Start:", m_sbXMoveMin);
+
+    m_sbXMoveMax = new QDoubleSpinBox(this);
+    m_sbXMoveMax->setRange(0.0, 100.0);
+    m_sbXMoveMax->setValue(80.0);
+    m_sbXMoveMax->setSingleStep(5.0);
+    m_sbXMoveMax->setSuffix(" %");
+    m_sbXMoveMax->setToolTip("Maximum chord position for X movement.\n"
+                             "Control points after this position only move in Y.");
+    connect(m_sbXMoveMax, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &OptimizationPanel::updateOptimMarkersPreview);
+    geoLayout->addRow("X Move End:", m_sbXMoveMax);
+
     m_cbSymmetric = new QCheckBox("Symmetric foil", this);
     m_cbSymmetric->setToolTip("Force the foil to be symmetric (zero camber).\n"
                               "Upper and lower surfaces will be mirrored about the chord line.");
@@ -504,6 +527,7 @@ void OptimizationPanel::onRun()
 
     m_pTask->setOptimizationPoints(m_sbOptimPoints->value());
     m_pTask->setBoundsScale(m_sbBoundsScale->value());
+    m_pTask->setXMoveChordRange(m_sbXMoveMin->value() / 100.0, m_sbXMoveMax->value() / 100.0);
     m_pTask->setSymmetric(m_cbSymmetric->isChecked());
 
     m_pTask->initVariablesFromFoil();
@@ -855,6 +879,7 @@ void OptimizationPanel::updateOptimMarkersPreview()
     tempTask.setPreset(preset);
     tempTask.setOptimizationPoints(m_sbOptimPoints->value());
     tempTask.setBoundsScale(m_sbBoundsScale->value());
+    tempTask.setXMoveChordRange(m_sbXMoveMin->value() / 100.0, m_sbXMoveMax->value() / 100.0);
     tempTask.setSymmetric(m_cbSymmetric->isChecked());
 
     tempTask.initVariablesFromFoil();
