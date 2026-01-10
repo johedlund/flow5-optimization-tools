@@ -638,15 +638,15 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
             const Node2d &lePoint = topNodes[leOptimIndex];
 
             // For top surface: phantom point just before LE (at end of topNodes)
-            // Tangent points "into" the LE from top side
-            Node2d phantomTop(lePoint.x + phantomDist * m_BaseLETangent.x,
-                              lePoint.y + phantomDist * m_BaseLETangent.y);
+            // Tangent points opposite to parametric direction (upward for top surface)
+            Node2d phantomTop(lePoint.x - phantomDist * m_BaseLETangent.x,
+                              lePoint.y - phantomDist * m_BaseLETangent.y);
             topNodes.push_back(phantomTop);
 
             // For bottom surface: phantom point just after LE (at start of botNodes)
-            // Tangent points "out of" the LE toward bottom side (opposite direction)
-            Node2d phantomBot(lePoint.x - phantomDist * m_BaseLETangent.x,
-                              lePoint.y - phantomDist * m_BaseLETangent.y);
+            // Tangent points along parametric direction (downward for bottom surface)
+            Node2d phantomBot(lePoint.x + phantomDist * m_BaseLETangent.x,
+                              lePoint.y + phantomDist * m_BaseLETangent.y);
             botNodes.insert(botNodes.begin(), phantomBot);
 
             // 5. Build separate cubic splines for top and bottom
@@ -1430,12 +1430,14 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             const double phantomDist = 0.001;
             const Node2d &lePoint = topNodes[leOptimIndex];
 
-            Node2d phantomTop(lePoint.x + phantomDist * m_BaseLETangent.x,
-                              lePoint.y + phantomDist * m_BaseLETangent.y);
+            // Tangent points opposite to parametric direction (upward for top surface)
+            Node2d phantomTop(lePoint.x - phantomDist * m_BaseLETangent.x,
+                              lePoint.y - phantomDist * m_BaseLETangent.y);
             topNodes.push_back(phantomTop);
 
-            Node2d phantomBot(lePoint.x - phantomDist * m_BaseLETangent.x,
-                              lePoint.y - phantomDist * m_BaseLETangent.y);
+            // Tangent points along parametric direction (downward for bottom surface)
+            Node2d phantomBot(lePoint.x + phantomDist * m_BaseLETangent.x,
+                              lePoint.y + phantomDist * m_BaseLETangent.y);
             botNodes.insert(botNodes.begin(), phantomBot);
 
             // 5. Build separate cubic splines
