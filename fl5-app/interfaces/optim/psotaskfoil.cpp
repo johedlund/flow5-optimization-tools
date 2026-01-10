@@ -378,20 +378,6 @@ double upperSurfaceDCpDx(const Foil &foil, const OpPoint &opp, double xTarget)
     return std::nan("");
 }
 
-/**
- * Smooth step function for LE bounds fade.
- * Uses Hermite interpolation: f(t) = 3t^2 - 2t^3
- * Properties: f(0)=0, f(1)=1, f'(0)=0, f'(1)=0
- * This ensures continuous derivatives at the fade boundary, preventing kinks.
- */
-double smoothstepFactor(double dist, double fadeRegion, double minFactor = 0.0)
-{
-    if (fadeRegion < 1e-9) return 1.0;
-    double t = std::clamp(dist / fadeRegion, 0.0, 1.0);
-    double factor = t * t * (3.0 - 2.0 * t);  // Hermite smoothstep
-    return minFactor + (1.0 - minFactor) * factor;
-}
-
 } // namespace
 
 PSOTaskFoil::PSOTaskFoil()
@@ -481,12 +467,15 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
         BSpline workBSpline;
         workBSpline.duplicate(m_BaseBSpline);
 
-        // Apply particle position values to control points
+        // Apply particle position values to control points (X or Y depending on m_VarIsX)
         for(int i = 0; i < int(m_VarToBase.size()); ++i)
         {
             const int ctrlIndex = m_VarToBase[i];
             Node2d pt = workBSpline.controlPoint(ctrlIndex);
-            pt.y = p.pos(i);
+            if(i < int(m_VarIsX.size()) && m_VarIsX[i])
+                pt.x = p.pos(i);
+            else
+                pt.y = p.pos(i);
             workBSpline.setCtrlPoint(ctrlIndex, pt);
         }
 
@@ -557,11 +546,14 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
             }
         }
 
-        // Apply particle position values to upper surface
+        // Apply particle position values (X or Y depending on m_VarIsX)
         for(int i=0; i<int(m_VarToBase.size()); ++i)
         {
             const int baseIndex = m_VarToBase[i];
-            pNewFoil->setBaseNode(baseIndex, pNewFoil->xb(baseIndex), p.pos(i));
+            if(i < int(m_VarIsX.size()) && m_VarIsX[i])
+                pNewFoil->setBaseNode(baseIndex, p.pos(i), pNewFoil->yb(baseIndex));
+            else
+                pNewFoil->setBaseNode(baseIndex, pNewFoil->xb(baseIndex), p.pos(i));
         }
 
         // For symmetric mode, mirror upper surface to lower surface
@@ -727,6 +719,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 {
     m_Variable.clear();
     m_VarToBase.clear();
+    m_VarIsX.clear();
     m_OptimBaseNodes.clear();
     m_OptimBaseIndex.clear();
     m_BaseLERadius = 0.0;
@@ -835,26 +828,23 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             }
         }
 
-        // Create optimization variables for each control point Y (except TE endpoints and LE)
+        // Create optimization variables for each control point (except TE endpoints and LE)
         // The B-spline endpoints are clamped, so first and last control points coincide with TE
+        // LE-adjacent points get both X and Y variables to allow proper LE shaping
         const double maxThickness = std::fabs(m_pFoil->maxThickness());
         double delta = (yDelta > 0.0) ? yDelta : std::max(0.005, 0.3 * maxThickness);
         delta *= m_BoundsScale;
-
-        // LE protection: fade bounds near LE using smooth step function
-        // Find maxX for chord calculation (TE is at first/last control point)
-        double maxX = m_BaseBSpline.controlPoint(0).x;
-        for(int i = 1; i < nCtrl; ++i)
-        {
-            if(m_BaseBSpline.controlPoint(i).x > maxX)
-                maxX = m_BaseBSpline.controlPoint(i).x;
-        }
-        const double xLE = minX; // minX already computed above for LE detection
-        const double chord = maxX - minX;
-        const double fadeRegion = m_LEFadeRegion * chord;
+        const double xDelta = delta * m_LEXBoundsScale;
 
         m_VarToBase.clear();
-        m_Variable.reserve(nCtrl);
+        m_VarIsX.clear();
+        m_Variable.reserve(nCtrl * 2);  // Reserve for possible X+Y variables
+
+        // Helper to check if control point is LE-adjacent
+        auto isLEAdjacent = [this](int i) {
+            const int distFromLE = std::abs(i - m_BSplineLECtrlIndex);
+            return distFromLE > 0 && distFromLE <= m_LEXPoints;
+        };
 
         if(m_bSymmetric)
         {
@@ -864,14 +854,19 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             {
                 const double x = m_BaseBSpline.controlPoint(i).x;
                 const double y = m_BaseBSpline.controlPoint(i).y;
-                const double dist = std::fabs(x - xLE);
-                const double factor = smoothstepFactor(dist, fadeRegion, m_LEFadeMinFactor);
-                const double localDelta = delta * factor;
-                const double minY = y - localDelta;
-                const double maxY = y + localDelta;
 
-                m_Variable.emplace_back("cp_" + std::to_string(i), minY, maxY);
+                // Add X variable for LE-adjacent points
+                if(isLEAdjacent(i))
+                {
+                    m_Variable.emplace_back("cpx_" + std::to_string(i), x - xDelta, x + xDelta);
+                    m_VarToBase.push_back(i);
+                    m_VarIsX.push_back(true);
+                }
+
+                // Add Y variable for all points
+                m_Variable.emplace_back("cpy_" + std::to_string(i), y - delta, y + delta);
                 m_VarToBase.push_back(i);
+                m_VarIsX.push_back(false);
             }
         }
         else
@@ -884,14 +879,19 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 
                 const double x = m_BaseBSpline.controlPoint(i).x;
                 const double y = m_BaseBSpline.controlPoint(i).y;
-                const double dist = std::fabs(x - xLE);
-                const double factor = smoothstepFactor(dist, fadeRegion, m_LEFadeMinFactor);
-                const double localDelta = delta * factor;
-                const double minY = y - localDelta;
-                const double maxY = y + localDelta;
 
-                m_Variable.emplace_back("cp_" + std::to_string(i), minY, maxY);
-                m_VarToBase.push_back(i); // Maps variable index to control point index
+                // Add X variable for LE-adjacent points
+                if(isLEAdjacent(i))
+                {
+                    m_Variable.emplace_back("cpx_" + std::to_string(i), x - xDelta, x + xDelta);
+                    m_VarToBase.push_back(i);
+                    m_VarIsX.push_back(true);
+                }
+
+                // Add Y variable for all points
+                m_Variable.emplace_back("cpy_" + std::to_string(i), y - delta, y + delta);
+                m_VarToBase.push_back(i);
+                m_VarIsX.push_back(false);
             }
         }
 
@@ -985,14 +985,17 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     const double maxThickness = std::fabs(m_pFoil->maxThickness());
     double delta = (yDelta > 0.0) ? yDelta : std::max(0.002, 0.2 * maxThickness);
     delta *= m_BoundsScale;
-
-    // LE protection: fade bounds near LE using smooth step function
-    const double chord = maxX - minX;
-    const double fadeRegion = m_LEFadeRegion * chord;
-    const double xLE = m_OptimBaseNodes[leOptimIndex].x;
+    const double xDelta = delta * m_LEXBoundsScale;
 
     const int nOptim = int(m_OptimBaseNodes.size());
-    m_Variable.reserve(nOptim);
+    m_Variable.reserve(nOptim * 2);  // Reserve for possible X+Y variables
+    m_VarIsX.clear();
+
+    // Helper to check if point is LE-adjacent
+    auto isLEAdjacent = [leOptimIndex, this](int i) {
+        const int distFromLE = std::abs(i - leOptimIndex);
+        return distFromLE > 0 && distFromLE <= m_LEXPoints;
+    };
 
     if(m_bSymmetric)
     {
@@ -1002,14 +1005,19 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         {
             const double x = m_OptimBaseNodes[i].x;
             const double y = m_OptimBaseNodes[i].y;
-            const double dist = std::fabs(x - xLE);
-            const double factor = smoothstepFactor(dist, fadeRegion, m_LEFadeMinFactor);
-            const double localDelta = delta * factor;
-            const double minY = y - localDelta;
-            const double maxY = y + localDelta;
 
-            m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
+            // Add X variable for LE-adjacent points
+            if(isLEAdjacent(i))
+            {
+                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), x - xDelta, x + xDelta);
+                m_VarToBase.push_back(i);
+                m_VarIsX.push_back(true);
+            }
+
+            // Add Y variable for all points
+            m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), y - delta, y + delta);
             m_VarToBase.push_back(i);
+            m_VarIsX.push_back(false);
         }
     }
     else
@@ -1021,14 +1029,19 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 
             const double x = m_OptimBaseNodes[i].x;
             const double y = m_OptimBaseNodes[i].y;
-            const double dist = std::fabs(x - xLE);
-            const double factor = smoothstepFactor(dist, fadeRegion, m_LEFadeMinFactor);
-            const double localDelta = delta * factor;
-            const double minY = y - localDelta;
-            const double maxY = y + localDelta;
 
-            m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), minY, maxY);
+            // Add X variable for LE-adjacent points
+            if(isLEAdjacent(i))
+            {
+                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), x - xDelta, x + xDelta);
+                m_VarToBase.push_back(i);
+                m_VarIsX.push_back(true);
+            }
+
+            // Add Y variable for all points
+            m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[i]), y - delta, y + delta);
             m_VarToBase.push_back(i);
+            m_VarIsX.push_back(false);
         }
 
         if(m_VarToBase.empty() && nOptim > 2)
@@ -1040,6 +1053,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             const double y = m_OptimBaseNodes[mid].y;
             m_Variable.emplace_back("yb_" + std::to_string(m_OptimBaseIndex[mid]), y - delta, y + delta);
             m_VarToBase.push_back(mid);
+            m_VarIsX.push_back(false);
         }
     }
 

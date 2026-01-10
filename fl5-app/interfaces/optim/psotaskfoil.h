@@ -183,12 +183,14 @@ class PSOTaskFoil : public PSOTask
         double m_BoundsScale{1.0};
         bool m_bSymmetric{false};
 
-        // LE protection: fade bounds near LE to prevent concave/tangled geometry
-        double m_LEFadeRegion{0.10};      // Fade region as fraction of chord (10%)
-        double m_LEFadeMinFactor{0.0};    // Minimum factor at LE (0 = fully locked)
+        // LE X-movement: allow X adjustment for points near LE to enable proper shaping
+        int m_LEXPoints{2};               // Number of LE-adjacent points with X movement (each side)
+        double m_LEXBoundsScale{0.2};     // X bounds = Y bounds * this factor (tighter)
+
         std::vector<Node2d> m_OptimBaseNodes;
         std::vector<int> m_OptimBaseIndex;
         std::vector<int> m_VarToBase;
+        std::vector<bool> m_VarIsX;       // true if variable is X coordinate, false for Y
 
         // Preset V2 members
         double m_BaseMaxCamber{0.0};
