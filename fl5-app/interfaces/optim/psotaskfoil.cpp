@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <string>
 
 namespace {
@@ -550,8 +551,9 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
     {
         const int nOptim = int(m_OptimBaseNodes.size());
         // Split spline approach for LE protection
-        // TODO: Debug - split spline creates invalid geometry, needs further investigation
-        const bool useSplitSpline = false;
+        const bool useSplitSpline = true;
+        const bool debugSpline = false;
+
 
         if(nOptim < 3 || !useSplitSpline)
         {
@@ -656,6 +658,22 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
             topSpline.approximate(int(topNodes.size()), topNodes);
             botSpline.approximate(int(botNodes.size()), botNodes);
 
+            if(debugSpline)
+            {
+                std::cerr << "\n=== SPLIT SPLINE DEBUG (createOptimizedFoil) ===" << std::endl;
+                std::cerr << "nOptim=" << nOptim << " leOptimIndex=" << leOptimIndex << std::endl;
+                std::cerr << "topNodes.size()=" << topNodes.size() << " botNodes.size()=" << botNodes.size() << std::endl;
+                std::cerr << "LE tangent: (" << m_BaseLETangent.x << ", " << m_BaseLETangent.y << ")" << std::endl;
+                std::cerr << "\nTop nodes (TE -> LE -> phantom):" << std::endl;
+                for(size_t i = 0; i < topNodes.size(); ++i)
+                    std::cerr << "  [" << i << "] x=" << topNodes[i].x << " y=" << topNodes[i].y << std::endl;
+                std::cerr << "\nBot nodes (phantom -> LE -> TE):" << std::endl;
+                for(size_t i = 0; i < botNodes.size(); ++i)
+                    std::cerr << "  [" << i << "] x=" << botNodes[i].x << " y=" << botNodes[i].y << std::endl;
+                std::cerr << "\nSpline output sizes: top=" << topSpline.outputPts().size()
+                          << " bot=" << botSpline.outputPts().size() << std::endl;
+            }
+
             // 6. Sample splines to create smoothed output
             // topNodes has (leOptimIndex + 1) original points + 1 phantom = leOptimIndex + 2 total
             // botNodes has (nOptim - leOptimIndex) original points + 1 phantom = nOptim - leOptimIndex + 1 total
@@ -669,38 +687,35 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
             std::vector<Node2d> newBaseNodes;
             newBaseNodes.reserve(nOptim);
 
-            if(topOutSize >= 2 && botOutSize >= 2)
+            if(topOutSize >= 10 && botOutSize >= 10)
             {
-                // Calculate how many output points correspond to real nodes vs phantom
-                // For top: phantom is at end, so use first ~95% of output
-                // For bottom: phantom is at start, so use last ~95% of output
-                const double phantomFrac = 1.0 / double(topNodes.size());
-
-                // Sample top surface (TE to LE)
-                const int nTopSample = leOptimIndex + 1;  // Number of points we want
-                const double topEndT = 1.0 - phantomFrac;  // Stop before phantom
-                for(int i = 0; i < nTopSample; ++i)
+                // Top surface: sample from TE (index 0) toward LE, skip last 2 (phantom region)
+                const int topEndIdx = topOutSize - 2;
+                for(int i = 0; i < leOptimIndex; ++i)
                 {
-                    double t = (nTopSample > 1) ? double(i) / double(nTopSample - 1) * topEndT : 0.0;
-                    int idx = int(t * (topOutSize - 1));
-                    idx = std::max(0, std::min(idx, topOutSize - 1));
+                    int idx = (leOptimIndex > 1) ? i * topEndIdx / (leOptimIndex - 1) : 0;
+                    idx = std::max(0, std::min(idx, topEndIdx));
                     newBaseNodes.push_back(topOut[idx]);
                 }
 
-                // Sample bottom surface (skip LE, go from just after LE to TE)
-                const int nBotSample = nOptim - leOptimIndex - 1;  // Exclude LE (already added)
-                const double botStartT = 1.0 / double(botNodes.size());  // Start after phantom
+                // Explicitly add LE point (the original LE, not the phantom)
+                newBaseNodes.push_back(topNodes[leOptimIndex]);
+
+                // Bottom surface: sample from after phantom toward TE
+                const int nBotSample = nOptim - leOptimIndex - 1;
+                const int botStartIdx = 2;
                 for(int i = 0; i < nBotSample; ++i)
                 {
-                    double t = botStartT + (nBotSample > 1 ? double(i + 1) / double(nBotSample) * (1.0 - botStartT) : (1.0 - botStartT));
-                    int idx = int(t * (botOutSize - 1));
-                    idx = std::max(0, std::min(idx, botOutSize - 1));
+                    int idx = (nBotSample > 1)
+                        ? botStartIdx + i * (botOutSize - 1 - botStartIdx) / (nBotSample - 1)
+                        : botOutSize - 1;
+                    idx = std::max(botStartIdx, std::min(idx, botOutSize - 1));
                     newBaseNodes.push_back(botOut[idx]);
                 }
             }
             else
             {
-                // Fallback: use original nodes without phantom points
+                // Fallback if spline output too small
                 for(int i = 0; i <= leOptimIndex; ++i)
                     newBaseNodes.push_back(m_OptimBaseNodes[i]);
                 for(int i = leOptimIndex + 1; i < nOptim; ++i)
@@ -1339,8 +1354,9 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     {
         const int nOptim = int(m_OptimBaseNodes.size());
         // Split spline approach for LE protection
-        // TODO: Debug - split spline creates invalid geometry, needs further investigation
-        const bool useSplitSpline = false;
+        const bool useSplitSpline = true;
+        const bool debugSpline = false;
+
 
         if(nOptim < 3 || !useSplitSpline)
         {
@@ -1430,6 +1446,24 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             const bool topOk = topSpline.approximate(int(topNodes.size()), topNodes);
             const bool botOk = botSpline.approximate(int(botNodes.size()), botNodes);
 
+            if(debugSpline)
+            {
+                std::cout << "\n=== SPLIT SPLINE DEBUG ===" << std::endl;
+                std::cout << "topNodes.size()=" << topNodes.size() << " botNodes.size()=" << botNodes.size() << std::endl;
+                std::cout << "topOk=" << topOk << " botOk=" << botOk << std::endl;
+                const auto &topOut = topSpline.outputPts();
+                const auto &botOut = botSpline.outputPts();
+                std::cout << "topSpline.outputPts().size()=" << topOut.size()
+                          << " botSpline.outputPts().size()=" << botOut.size() << std::endl;
+                std::cout << "LE tangent: (" << m_BaseLETangent.x << ", " << m_BaseLETangent.y << ")" << std::endl;
+                std::cout << "Top spline output (last 5 - near LE/phantom):" << std::endl;
+                for(size_t i = topOut.size()-5; i < topOut.size(); ++i)
+                    std::cout << "  [" << i << "] x=" << topOut[i].x << " y=" << topOut[i].y << std::endl;
+                std::cout << "Bot spline output (first 5 - near phantom/LE):" << std::endl;
+                for(size_t i = 0; i < 5 && i < botOut.size(); ++i)
+                    std::cout << "  [" << i << "] x=" << botOut[i].x << " y=" << botOut[i].y << std::endl;
+            }
+
             std::vector<Node2d> newBaseNodes;
             newBaseNodes.reserve(nOptim);
 
@@ -1444,43 +1478,64 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             else
             {
                 // 6. Sample splines to create smoothed output
+                // The phantom points are at topOut[last] and botOut[0], very close to LE
+                // Skip phantom regions and explicitly add LE point
                 const auto &topOut = topSpline.outputPts();
                 const auto &botOut = botSpline.outputPts();
                 const int topOutSize = int(topOut.size());
                 const int botOutSize = int(botOut.size());
 
-                if(topOutSize >= 2 && botOutSize >= 2)
+                if(topOutSize >= 10 && botOutSize >= 10)
                 {
-                    const double phantomFrac = 1.0 / double(topNodes.size());
-
-                    const int nTopSample = leOptimIndex + 1;
-                    const double topEndT = 1.0 - phantomFrac;
-                    for(int i = 0; i < nTopSample; ++i)
+                    // Top surface: sample from TE (index 0) toward LE, skip last 2 (phantom region)
+                    const int topEndIdx = topOutSize - 2; // Skip phantom region
+                    for(int i = 0; i < leOptimIndex; ++i) // leOptimIndex points, not including LE
                     {
-                        double t = (nTopSample > 1) ? double(i) / double(nTopSample - 1) * topEndT : 0.0;
-                        int idx = int(t * (topOutSize - 1));
-                        idx = std::max(0, std::min(idx, topOutSize - 1));
+                        int idx = (leOptimIndex > 1) ? i * topEndIdx / (leOptimIndex - 1) : 0;
+                        idx = std::max(0, std::min(idx, topEndIdx));
                         newBaseNodes.push_back(topOut[idx]);
                     }
 
+                    // Explicitly add LE point (the original LE, not the phantom)
+                    // topNodes[leOptimIndex] is LE (phantom was appended after it at index 41)
+                    newBaseNodes.push_back(topNodes[leOptimIndex]);
+
+                    // Bottom surface: sample from after phantom toward TE
                     const int nBotSample = nOptim - leOptimIndex - 1;
-                    const double botStartT = 1.0 / double(botNodes.size());
+                    const int botStartIdx = 2; // Skip only phantom point
                     for(int i = 0; i < nBotSample; ++i)
                     {
-                        double t = botStartT + (nBotSample > 1 ? double(i + 1) / double(nBotSample) * (1.0 - botStartT) : (1.0 - botStartT));
-                        int idx = int(t * (botOutSize - 1));
-                        idx = std::max(0, std::min(idx, botOutSize - 1));
+                        int idx = (nBotSample > 1)
+                            ? botStartIdx + i * (botOutSize - 1 - botStartIdx) / (nBotSample - 1)
+                            : botOutSize - 1;
+                        idx = std::max(botStartIdx, std::min(idx, botOutSize - 1));
                         newBaseNodes.push_back(botOut[idx]);
                     }
                 }
                 else
                 {
+                    // Fallback if spline output too small
                     for(int i = 0; i <= leOptimIndex; ++i)
                         newBaseNodes.push_back(m_OptimBaseNodes[i]);
                     for(int i = leOptimIndex + 1; i < nOptim; ++i)
                         newBaseNodes.push_back(m_OptimBaseNodes[i]);
                 }
             }  // end else (spline ok)
+
+            if(debugSpline)
+            {
+                std::cout << "newBaseNodes.size()=" << newBaseNodes.size() << " (expected " << nOptim << ")" << std::endl;
+                // Print first few, around LE, and last few points
+                for(size_t i = 0; i < std::min(size_t(3), newBaseNodes.size()); ++i)
+                    std::cout << "  [" << i << "] x=" << newBaseNodes[i].x << " y=" << newBaseNodes[i].y << std::endl;
+                std::cout << "  ..." << std::endl;
+                // Around LE (index 40)
+                for(size_t i = 38; i <= 43 && i < newBaseNodes.size(); ++i)
+                    std::cout << "  [" << i << "] x=" << newBaseNodes[i].x << " y=" << newBaseNodes[i].y << std::endl;
+                std::cout << "  ..." << std::endl;
+                for(size_t i = std::max(size_t(44), newBaseNodes.size()-3); i < newBaseNodes.size(); ++i)
+                    std::cout << "  [" << i << "] x=" << newBaseNodes[i].x << " y=" << newBaseNodes[i].y << std::endl;
+            }
 
             workFoil.setBaseNodes(newBaseNodes);
         }
