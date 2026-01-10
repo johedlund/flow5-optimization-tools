@@ -13,6 +13,51 @@ export GIT_AUTHOR_NAME="Claude Agent" GIT_AUTHOR_EMAIL="claude@agent.flow5" GIT_
 
 Flow5 is a potential flow solver (aerodynamic analysis) with built-in pre/post-processing. It's version 7 of the legacy xflr5 project, used for preliminary design of wings, planes, hydrofoils, and sails.
 
+### Key Features
+
+- **2D Foil Analysis**: XFoil-based airfoil analysis (Cl, Cd, Cm, pressure distributions)
+- **3D Panel Methods**: Lifting line, VLM, and 3D panel analysis for wings/planes
+- **Foil Optimization**: PSO-based airfoil shape optimization with multiple objectives
+- **CAD Integration**: OpenCASCADE-based geometry import/export (STEP, STL)
+- **Sail Analysis**: Specialized tools for sail design and analysis
+
+### Foil Optimization Capabilities
+
+The optimization system (`interfaces/optim/`) supports:
+
+- **Presets**: V1 (Y-offset), V2 (camber/thickness), V3 (B-spline control points)
+- **Multi-objective optimization**: Weighted sum of objectives at different operating points
+- **Per-objective settings**: Each objective can have its own alpha/Cl target and Reynolds number
+- **Dynamic constraints**: Geometric (thickness, camber, LE radius) and aerodynamic (Cl, Cd, L/D)
+- **Mode A/B**: 2D-only or 3D-coupled optimization with induced angle correction
+- **Configurable bounds**: Separate Y and X bounds scales, X movement chord range
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  fl5-app (Qt GUI)                                           │
+│  ├── modules/xdirect/  - 2D airfoil analysis (XDirect)      │
+│  ├── modules/xplane/   - 3D wing/plane analysis             │
+│  ├── modules/xsail/    - Sail analysis                      │
+│  └── interfaces/optim/ - Optimization dialogs & PSO tasks   │
+│      ├── optimizationpanel.cpp/h  - Main optimization UI    │
+│      ├── psotaskfoil.cpp/h        - Foil PSO task           │
+│      ├── psotaskplane.cpp/h       - Plane PSO task          │
+│      └── particle.cpp/h           - PSO particle            │
+├─────────────────────────────────────────────────────────────┤
+│  fl5-lib (Core C++ Library)                                 │
+│  ├── api/         - Public API headers, splines, vectors    │
+│  ├── geom/        - Geometry operations, meshing            │
+│  ├── objects2d/   - Foil, Polar, OpPoint, XFoilTask        │
+│  ├── objects3d/   - Wing, Plane, Body, Panel                │
+│  └── analysis3d/  - 3D panel methods, LLT, VLM              │
+├─────────────────────────────────────────────────────────────┤
+│  XFoil-lib (Aerodynamic Solver)                             │
+│  └── Pure C++ translation of XFOIL (no Qt dependencies)     │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ## Build Commands
 
 ```bash
@@ -21,7 +66,8 @@ qmake6 XFoil-lib/XFoil-lib.pro && make -C XFoil-lib
 qmake6 fl5-lib/fl5-lib.pro && make -C fl5-lib
 qmake6 flow5.pro && make
 
-# Or from Qt Creator: open flow5.pro
+# Quick rebuild (after initial build)
+make -j4
 
 # Headless optimization API test
 OPENBLAS_NUM_THREADS=1 QT6_INCLUDE_DIR=/usr/include/x86_64-linux-gnu/qt6 \
@@ -31,43 +77,59 @@ OPENBLAS_NUM_THREADS=1 QT6_INCLUDE_DIR=/usr/include/x86_64-linux-gnu/qt6 \
 
 **Note:** `OPENBLAS_NUM_THREADS=1` is required to prevent segfaults in spline solving.
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  fl5-app (Qt GUI)                                           │
-│  ├── modules/xdirect/  - 2D airfoil analysis                │
-│  ├── modules/xplane/   - 3D wing analysis                   │
-│  └── interfaces/optim/ - Optimization dialogs & PSO tasks   │
-├─────────────────────────────────────────────────────────────┤
-│  fl5-lib (Core C++ Library)                                 │
-│  ├── api/         - Public API headers                      │
-│  ├── geom/        - Geometry operations, splines            │
-│  ├── objects2d/   - Foil, Polar, OpPoint, XFoilTask        │
-│  └── analysis3d/  - 3D panel methods                        │
-├─────────────────────────────────────────────────────────────┤
-│  XFoil-lib (Aerodynamic Solver)                             │
-│  └── Pure C++ translation of XFOIL (no Qt dependencies)     │
-└─────────────────────────────────────────────────────────────┘
-```
-
 ## Key Classes & Data Flow
 
 **Foil Optimization Path:**
 ```
-XDirect menu → OptimFoilDlg → PSOTaskFoil → XFoilTask::calcFitness()
-                                  ↓
-                              Foil geometry (base nodes)
-                              Polar (Re, Mach, NCrit)
-                              Objectives (Cl, Cd, Cl/Cd targets)
+XDirect menu → OptimFoilDlg → OptimizationPanel → PSOTaskFoil → XFoilTask
+                                    ↓
+                              ObjectiveSpec[]     - Multi-objective definitions
+                              Constraints         - Geometric/aerodynamic limits
+                              Particle[]          - PSO swarm
 ```
 
 **Core Types:**
 - `Foil` (`objects2d/foil.h`): Airfoil shape with base nodes → spline → mesh pipeline
-- `Polar` (`objects2d/analysis2d/polar.h`): Operating condition container (Re, AoA, etc.)
+- `Polar` (`objects2d/analysis2d/polar.h`): Operating condition container (Re, Mach, NCrit)
 - `XFoilTask` (`objects2d/analysis2d/xfoiltask.h`): Thread-safe XFoil solver wrapper
 - `PSOTaskFoil` (`fl5-app/interfaces/optim/psotaskfoil.h`): PSO optimization for foils
-- `OptObjective/OptVariable` (`api/optstructures.h`): Optimization problem definition
+- `ObjectiveSpec` (`psotaskfoil.h`): Multi-objective definition (type, target, Re, weight)
+- `OptimizationPanel` (`optimizationpanel.h`): Main optimization UI with dynamic rows
+
+## Subagent Usage
+
+**Always use subagents for repetitive tasks to save context and improve efficiency:**
+
+```
+# Code exploration and searching
+Task tool with subagent_type=Explore  - For finding files, understanding codebase structure
+
+# Build and test
+Task tool with subagent_type=Bash     - For running make, test scripts
+
+# Git operations
+Task tool with subagent_type=Bash     - For commits, status, push
+```
+
+**When to use subagents:**
+- Searching for code patterns across the codebase
+- Running build commands (`make -j4`)
+- Running test suites (`API_examples/foiloptimize/run_test.sh`)
+- Git operations (status, diff, commit, push)
+- Any task that might need multiple iterations
+
+## Issue Tracking
+
+Uses **bd (beads)** for issue tracking:
+```bash
+bd ready              # Find unblocked work
+bd show <id>          # Read issue description before starting work
+bd create "Title" --type task --priority 2
+bd close <id>         # Complete work
+bd sync               # Sync at session end (mandatory)
+```
+
+**Always run `bd show <id>` to read issue descriptions before starting work.**
 
 ## Global Object Registry
 
@@ -82,19 +144,6 @@ Foil* foil = foil::makeNacaFoil(...);
 Polar* polar = Objects2d::createPolar();
 Objects2d::insertPolar(polar);
 ```
-
-## Issue Tracking
-
-Uses **bd (beads)** for issue tracking:
-```bash
-bd ready              # Find unblocked work
-bd show <id>          # Read issue description before starting work
-bd create "Title" --type task --priority 2
-bd close <id>         # Complete work
-bd sync               # Sync at session end (mandatory)
-```
-
-**Always run `bd show <id>` to read issue descriptions before starting work.**
 
 ## Coding Conventions
 
