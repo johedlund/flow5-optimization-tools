@@ -1130,12 +1130,15 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         BSpline workBSpline;
         workBSpline.duplicate(m_BaseBSpline);
 
-        // Apply particle position values to control points
+        // Apply particle position values to control points (X or Y depending on m_VarIsX)
         for(int i = 0; i < int(m_VarToBase.size()); ++i)
         {
             const int ctrlIndex = m_VarToBase[i];
             Node2d pt = workBSpline.controlPoint(ctrlIndex);
-            pt.y = pParticle->pos(i);
+            if(i < int(m_VarIsX.size()) && m_VarIsX[i])
+                pt.x = pParticle->pos(i);
+            else
+                pt.y = pParticle->pos(i);
             workBSpline.setCtrlPoint(ctrlIndex, pt);
         }
 
@@ -1210,11 +1213,14 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             }
         }
 
-        // Apply particle position values to upper surface
+        // Apply particle position values (X or Y depending on m_VarIsX)
         for(int i=0; i<int(m_VarToBase.size()); ++i)
         {
             const int baseIndex = m_VarToBase[i];
-            workFoil.setBaseNode(baseIndex, workFoil.xb(baseIndex), pParticle->pos(i));
+            if(i < int(m_VarIsX.size()) && m_VarIsX[i])
+                workFoil.setBaseNode(baseIndex, pParticle->pos(i), workFoil.yb(baseIndex));
+            else
+                workFoil.setBaseNode(baseIndex, workFoil.xb(baseIndex), pParticle->pos(i));
         }
 
         // For symmetric mode, mirror upper surface to lower surface
