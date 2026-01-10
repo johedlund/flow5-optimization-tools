@@ -94,13 +94,17 @@ GMesherWt::GMesherWt(QWidget *pParent) : QFrame{pParent}
 
     connect(&m_LogTimer, SIGNAL(timeout()), SLOT(onCheckLogger()));
 
+    // Guard gmsh calls - may throw if gmsh not properly initialized
+    try {
+        gmsh::option::setNumber("General.NumThreads", 16);
 
-    gmsh::option::setNumber("General.NumThreads", 16);
-
-    std::string list;
-    gmesh::listMainOptions(list);
-    m_ppto->onAppendStdText(list);
-    m_ppto->appendEOL();
+        std::string list;
+        gmesh::listMainOptions(list);
+        m_ppto->onAppendStdText(list);
+        m_ppto->appendEOL();
+    } catch (const std::exception &e) {
+        m_ppto->onAppendQText(QString("Gmsh initialization warning: %1").arg(e.what()));
+    }
 }
 
 
