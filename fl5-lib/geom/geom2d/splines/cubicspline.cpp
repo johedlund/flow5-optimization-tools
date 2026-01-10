@@ -115,14 +115,41 @@ void CubicSpline::buildMatrix(int size, int coordinate, double *aij, double *RHS
     if(coordinate==0) RHS[4*i + 1] = m_CtrlPt.at(i+1).x;
     else              RHS[4*i + 1] = m_CtrlPt.at(i+1).y;
 
-    // two "natural" spline conditions
-    aij[(4*i+2)*size + 0    ] = 0.0;
-    aij[(4*i+2)*size + 1    ] = 2.0;
-    RHS[4*i + 2] = 0.0;
+    // Boundary conditions at start (u=0)
+    // Natural: f''(0) = 2b = 0 => coefficient for b (col 1) = 2.0, RHS = 0
+    // Clamped: f'(0) = c = value => coefficient for c (col 2) = 1.0, RHS = tangent value
+    if(m_bClampedStart)
+    {
+        // Clamped: first derivative at start = specified value
+        aij[(4*i+2)*size + 2] = 1.0;  // coefficient for c in first segment
+        RHS[4*i + 2] = (coordinate == 0) ? m_dxduStart : m_dyduStart;
+    }
+    else
+    {
+        // Natural: second derivative = 0
+        aij[(4*i+2)*size + 0    ] = 0.0;
+        aij[(4*i+2)*size + 1    ] = 2.0;
+        RHS[4*i + 2] = 0.0;
+    }
 
-    aij[(4*i+3)*size + i*4+0] = 6.0 * ui1; /** @todo check value of ui1 */
-    aij[(4*i+3)*size + i*4+1] = 2.0;
-    RHS[4*i + 3] = 0.0;
+    // Boundary conditions at end (u=ui1 of last segment)
+    // Natural: f''(ui1) = 6a*ui1 + 2b = 0
+    // Clamped: f'(ui1) = 3a*ui1² + 2b*ui1 + c = value
+    if(m_bClampedEnd)
+    {
+        // Clamped: first derivative at end = specified value
+        aij[(4*i+3)*size + i*4+0] = 3.0 * ui1 * ui1;  // coefficient for a
+        aij[(4*i+3)*size + i*4+1] = 2.0 * ui1;        // coefficient for b
+        aij[(4*i+3)*size + i*4+2] = 1.0;              // coefficient for c
+        RHS[4*i + 3] = (coordinate == 0) ? m_dxduEnd : m_dyduEnd;
+    }
+    else
+    {
+        // Natural: second derivative = 0
+        aij[(4*i+3)*size + i*4+0] = 6.0 * ui1;
+        aij[(4*i+3)*size + i*4+1] = 2.0;
+        RHS[4*i + 3] = 0.0;
+    }
 }
 
 

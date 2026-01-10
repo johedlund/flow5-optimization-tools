@@ -550,9 +550,8 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
     else // V1 - Split spline approach
     {
         const int nOptim = int(m_OptimBaseNodes.size());
-        // Split spline approach disabled - natural boundary conditions cause LE loops
-        // TODO: Would need clamped spline (vertical tangent at LE) to work properly
-        const bool useSplitSpline = false;
+        // Split spline with clamped boundary conditions at LE for tangent continuity
+        const bool useSplitSpline = true;
         const bool debugSpline = false;
 
 
@@ -633,15 +632,19 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
                 }
             }
 
-            // 4. Build separate cubic splines for top and bottom
-            // Note: Phantom points removed - they caused spline oscillation/loops at LE.
-            // Both splines share the LE point for C0 continuity; tangent continuity
-            // is not enforced but the LE blend region (m_LEBlendChord) handles this.
+            // 4. Build separate cubic splines for top and bottom with clamped LE tangent
             CubicSpline topSpline, botSpline;
-            // Set output size before approximate() - it uses outputSize() internally
-            const int splineOutputPts = 100;  // Smooth output resolution
+            const int splineOutputPts = 100;
             topSpline.setOutputSize(splineOutputPts);
             botSpline.setOutputSize(splineOutputPts);
+
+            // Set clamped boundary conditions at LE for vertical tangent
+            // Top spline: ends at LE, so clamp the end tangent
+            // Bottom spline: starts at LE, so clamp the start tangent
+            // Use vertical tangent (dx/du=0, dy/du=-1 pointing downward toward bottom surface)
+            topSpline.setClampedEnd(0.0, -1.0);    // Vertical tangent at LE (end of top spline)
+            botSpline.setClampedStart(0.0, -1.0); // Vertical tangent at LE (start of bottom spline)
+
             topSpline.approximate(int(topNodes.size()), topNodes);
             botSpline.approximate(int(botNodes.size()), botNodes);
 
@@ -1341,9 +1344,8 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     else // V1 - Split spline approach
     {
         const int nOptim = int(m_OptimBaseNodes.size());
-        // Split spline approach disabled - natural boundary conditions cause LE loops
-        // TODO: Would need clamped spline (vertical tangent at LE) to work properly
-        const bool useSplitSpline = false;
+        // Split spline with clamped boundary conditions at LE for tangent continuity
+        const bool useSplitSpline = true;
         const bool debugSpline = false;
 
 
@@ -1415,11 +1417,16 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                 }
             }
 
-            // 4. Build separate cubic splines (no phantom points - they cause oscillation)
+            // 4. Build separate cubic splines with clamped LE tangent
             CubicSpline topSpline, botSpline;
             const int splineOutputPts = 100;
             topSpline.setOutputSize(splineOutputPts);
             botSpline.setOutputSize(splineOutputPts);
+
+            // Set clamped boundary conditions at LE for vertical tangent
+            topSpline.setClampedEnd(0.0, -1.0);    // Vertical tangent at LE (end of top spline)
+            botSpline.setClampedStart(0.0, -1.0); // Vertical tangent at LE (start of bottom spline)
+
             const bool topOk = topSpline.approximate(int(topNodes.size()), topNodes);
             const bool botOk = botSpline.approximate(int(botNodes.size()), botNodes);
 

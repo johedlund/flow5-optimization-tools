@@ -69,7 +69,18 @@ class FL5LIB_EXPORT CubicSpline : public Spline
 
         bool approximate(int nPts, const std::vector<Node2d> &node);
 
+        // Clamped boundary conditions: set tangent at start/end instead of natural (2nd deriv = 0)
+        void setClampedStart(double dxdu, double dydu) { m_bClampedStart = true; m_dxduStart = dxdu; m_dyduStart = dydu; }
+        void setClampedEnd(double dxdu, double dydu) { m_bClampedEnd = true; m_dxduEnd = dxdu; m_dyduEnd = dydu; }
+        void clearClampedConditions() { m_bClampedStart = false; m_bClampedEnd = false; }
+
     private:
+
+        // Clamped boundary condition data
+        bool m_bClampedStart{false};
+        bool m_bClampedEnd{false};
+        double m_dxduStart{0.0}, m_dyduStart{0.0};  // Tangent at start (u=0)
+        double m_dxduEnd{0.0}, m_dyduEnd{0.0};      // Tangent at end (u=1)
 
         std::vector<double> m_ArcLengths;
 
