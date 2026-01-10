@@ -88,10 +88,13 @@ Objects2d::insertPolar(polar);
 Uses **bd (beads)** for issue tracking:
 ```bash
 bd ready              # Find unblocked work
+bd show <id>          # Read issue description before starting work
 bd create "Title" --type task --priority 2
 bd close <id>         # Complete work
 bd sync               # Sync at session end (mandatory)
 ```
+
+**Always run `bd show <id>` to read issue descriptions before starting work.**
 
 ## Coding Conventions
 

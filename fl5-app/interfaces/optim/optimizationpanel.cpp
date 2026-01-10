@@ -290,12 +290,24 @@ void OptimizationPanel::setupUI()
     m_sbBoundsScale->setValue(1.0);
     m_sbBoundsScale->setSingleStep(0.1);
     m_sbBoundsScale->setSuffix("x");
-    m_sbBoundsScale->setToolTip("Scales the search space for each variable.\n"
+    m_sbBoundsScale->setToolTip("Scales the Y search space for each variable.\n"
                                 "Values > 1.0 allow larger deformations from the original foil.\n"
                                 "Values < 1.0 constrain the optimization to the neighborhood of the original foil.");
     connect(m_sbBoundsScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &OptimizationPanel::updateOptimMarkersPreview);
-    geoLayout->addRow("Bounds Scale:", m_sbBoundsScale);
+    geoLayout->addRow("Y Bounds Scale:", m_sbBoundsScale);
+
+    m_sbXBoundsScale = new QDoubleSpinBox(this);
+    m_sbXBoundsScale->setRange(0.0, 10.0);
+    m_sbXBoundsScale->setValue(2.0);
+    m_sbXBoundsScale->setSingleStep(0.5);
+    m_sbXBoundsScale->setSuffix("x");
+    m_sbXBoundsScale->setToolTip("X bounds multiplier relative to Y bounds.\n"
+                                 "2.0 = X can move twice as far as Y.\n"
+                                 "Higher values allow more X movement for fine-tuning.");
+    connect(m_sbXBoundsScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &OptimizationPanel::updateOptimMarkersPreview);
+    geoLayout->addRow("X Bounds Scale:", m_sbXBoundsScale);
 
     // X movement chord range (V1 preset)
     m_sbXMoveMin = new QDoubleSpinBox(this);
@@ -545,6 +557,7 @@ void OptimizationPanel::onRun()
 
     m_pTask->setOptimizationPoints(m_sbOptimPoints->value());
     m_pTask->setBoundsScale(m_sbBoundsScale->value());
+    m_pTask->setXBoundsScale(m_sbXBoundsScale->value());
     m_pTask->setXMoveChordRange(m_sbXMoveMin->value() / 100.0, m_sbXMoveMax->value() / 100.0);
     m_pTask->setSymmetric(m_cbSymmetric->isChecked());
 
@@ -920,6 +933,7 @@ void OptimizationPanel::updateOptimMarkersPreview()
     tempTask.setPreset(preset);
     tempTask.setOptimizationPoints(m_sbOptimPoints->value());
     tempTask.setBoundsScale(m_sbBoundsScale->value());
+    tempTask.setXBoundsScale(m_sbXBoundsScale->value());
     tempTask.setXMoveChordRange(m_sbXMoveMin->value() / 100.0, m_sbXMoveMax->value() / 100.0);
     tempTask.setSymmetric(m_cbSymmetric->isChecked());
 
@@ -1368,6 +1382,16 @@ void OptimizationPanel::addObjectiveRow()
     row->targetValueSpin->setFixedWidth(60);
     layout->addWidget(row->targetValueSpin, 1);
 
+    // Reynolds number spinbox (per-objective)
+    row->reynoldsSpin = new QDoubleSpinBox(this);
+    row->reynoldsSpin->setRange(1e4, 1e8);
+    row->reynoldsSpin->setValue(m_sbReynolds ? m_sbReynolds->value() : 1.0e6);
+    row->reynoldsSpin->setDecimals(0);
+    row->reynoldsSpin->setSingleStep(1e5);
+    row->reynoldsSpin->setFixedWidth(70);
+    row->reynoldsSpin->setToolTip("Reynolds number for this objective");
+    layout->addWidget(row->reynoldsSpin, 1);
+
     // Weight spinbox
     row->weightSpin = new QDoubleSpinBox(this);
     row->weightSpin->setRange(0.0, 10.0);
@@ -1425,7 +1449,7 @@ std::vector<PSOTaskFoil::ObjectiveSpec> OptimizationPanel::buildObjectiveSpecs()
     for(const auto *row : m_ObjectiveRows)
     {
         if(!row || !row->objectiveCombo || !row->targetModeCombo ||
-           !row->targetValueSpin || !row->weightSpin)
+           !row->targetValueSpin || !row->reynoldsSpin || !row->weightSpin)
             continue;
 
         PSOTaskFoil::ObjectiveSpec spec;
@@ -1434,6 +1458,7 @@ std::vector<PSOTaskFoil::ObjectiveSpec> OptimizationPanel::buildObjectiveSpecs()
         spec.targetMode = static_cast<PSOTaskFoil::TargetMode>(
             row->targetModeCombo->currentData().toInt());
         spec.targetValue = row->targetValueSpin->value();
+        spec.reynolds = row->reynoldsSpin->value();
         spec.weight = row->weightSpin->value();
         spec.enabled = true;
 

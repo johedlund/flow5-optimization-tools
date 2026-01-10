@@ -66,6 +66,7 @@ struct ObjectiveRow {
     QComboBox *objectiveCombo{nullptr};   // MinimizeCd, MaximizeLD, etc.
     QComboBox *targetModeCombo{nullptr};  // Alpha or Cl
     QDoubleSpinBox *targetValueSpin{nullptr};
+    QDoubleSpinBox *reynoldsSpin{nullptr}; // Per-objective Reynolds number
     QDoubleSpinBox *weightSpin{nullptr};
     QPushButton *deleteBtn{nullptr};
 };
@@ -145,6 +146,7 @@ private:
     QComboBox *m_PresetCombo;
     QSpinBox *m_sbOptimPoints;
     QDoubleSpinBox *m_sbBoundsScale;
+    QDoubleSpinBox *m_sbXBoundsScale;  // X bounds multiplier (relative to Y)
     QDoubleSpinBox *m_sbXMoveMin;
     QDoubleSpinBox *m_sbXMoveMax;
     QCheckBox *m_cbSymmetric;

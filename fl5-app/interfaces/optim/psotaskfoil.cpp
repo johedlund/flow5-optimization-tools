@@ -934,7 +934,8 @@ double PSOTaskFoil::evaluateObjectiveSpec(const Foil &workFoil, const ObjectiveS
     Polar workPolar;
     if(m_pPolar)
         workPolar.copySpecification(*m_pPolar);
-    workPolar.setReynolds(m_Reynolds);
+    // Use per-objective Reynolds number
+    workPolar.setReynolds(spec.reynolds);
     workPolar.setMach(m_Mach);
     workPolar.setNCrit(m_NCrit);
     workPolar.reset();
@@ -1357,7 +1358,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     const double leExclusionX = leX + m_LEBlendChord * chord;
 
     // X movement bounds for mid-chord points (configurable range)
-    const double xDelta = delta * 2.0;  // X bounds = 2x Y bounds
+    const double xDelta = delta * m_XBoundsScale;  // X bounds = m_XBoundsScale * Y bounds
 
     if(m_bSymmetric)
     {

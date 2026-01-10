@@ -76,6 +76,7 @@ class PSOTaskFoil : public PSOTask
             TargetMode targetMode{TargetMode::Alpha};
             double targetValue{0.0};      // Alpha (degrees) or Cl
             double weight{1.0};           // Relative weight (positive)
+            double reynolds{1.0e6};       // Per-objective Reynolds number
             double normFactor{1.0};       // Computed from baseline foil
             bool enabled{true};
         };
@@ -135,6 +136,7 @@ class PSOTaskFoil : public PSOTask
         void setConstraints(Constraints const &c) {m_Constraints = c;}
         void setOptimizationPoints(int n) {m_OptimizationPoints = n;}
         void setBoundsScale(double scale) {m_BoundsScale = scale;}
+        void setXBoundsScale(double scale) {m_XBoundsScale = scale;}
         void setSymmetric(bool bSym) {m_bSymmetric = bSym;}
         bool isSymmetric() const {return m_bSymmetric;}
 
@@ -213,6 +215,7 @@ class PSOTaskFoil : public PSOTask
         double m_InducedAlpha{0.0};
         int m_OptimizationPoints{0};
         double m_BoundsScale{1.0};
+        double m_XBoundsScale{2.0};   // X bounds multiplier (relative to Y bounds)
         bool m_bSymmetric{false};
 
         // LE protection: blend optimized shape back toward original near LE
