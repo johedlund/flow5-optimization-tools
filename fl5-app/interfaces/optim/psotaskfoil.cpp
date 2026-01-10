@@ -1014,6 +1014,9 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         return distFromLE > 0 && distFromLE <= m_LEXPoints;
     };
 
+    // LE X position - X variables must never go below this
+    const double leX = minX;
+
     if(m_bSymmetric)
     {
         // Symmetric: Only optimize upper surface (indices 1 to leOptimIndex-1)
@@ -1024,9 +1027,11 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             const double y = m_OptimBaseNodes[i].y;
 
             // Add X variable for LE-adjacent points
+            // X can only move toward TE (increase), never past LE
             if(isLEAdjacent(i))
             {
-                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), x - xDelta, x + xDelta);
+                const double xMin = std::max(leX, x - xDelta);
+                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), xMin, x + xDelta);
                 m_VarToBase.push_back(i);
                 m_VarIsX.push_back(true);
             }
@@ -1048,9 +1053,11 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
             const double y = m_OptimBaseNodes[i].y;
 
             // Add X variable for LE-adjacent points
+            // X can only move toward TE (increase), never past LE
             if(isLEAdjacent(i))
             {
-                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), x - xDelta, x + xDelta);
+                const double xMin = std::max(leX, x - xDelta);
+                m_Variable.emplace_back("xb_" + std::to_string(m_OptimBaseIndex[i]), xMin, x + xDelta);
                 m_VarToBase.push_back(i);
                 m_VarIsX.push_back(true);
             }
