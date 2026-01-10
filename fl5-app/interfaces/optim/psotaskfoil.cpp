@@ -550,8 +550,9 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
     else // V1 - Split spline approach
     {
         const int nOptim = int(m_OptimBaseNodes.size());
-        // Split spline approach for LE protection
-        const bool useSplitSpline = true;
+        // Split spline approach disabled - natural boundary conditions cause LE loops
+        // TODO: Would need clamped spline (vertical tangent at LE) to work properly
+        const bool useSplitSpline = false;
         const bool debugSpline = false;
 
 
@@ -1340,8 +1341,9 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     else // V1 - Split spline approach
     {
         const int nOptim = int(m_OptimBaseNodes.size());
-        // Split spline approach for LE protection
-        const bool useSplitSpline = true;
+        // Split spline approach disabled - natural boundary conditions cause LE loops
+        // TODO: Would need clamped spline (vertical tangent at LE) to work properly
+        const bool useSplitSpline = false;
         const bool debugSpline = false;
 
 
