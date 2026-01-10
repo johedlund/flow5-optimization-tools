@@ -69,6 +69,17 @@ class PSOTaskFoil : public PSOTask
             MaximizeEnduranceFactor // Cl^3 / Cd^2
         };
 
+        // Multi-objective specification for weighted sum optimization
+        struct ObjectiveSpec
+        {
+            ObjectiveType type{ObjectiveType::MinimizeCd};
+            TargetMode targetMode{TargetMode::Alpha};
+            double targetValue{0.0};      // Alpha (degrees) or Cl
+            double weight{1.0};           // Relative weight (positive)
+            double normFactor{1.0};       // Computed from baseline foil
+            bool enabled{true};
+        };
+
         struct ConstraintVal
         {
             double value{0.0};
@@ -167,9 +178,18 @@ class PSOTaskFoil : public PSOTask
                              std::vector<std::tuple<double, double, double>> &bounds) const;
         void getCurrentMarkers(Particle const &p, std::vector<std::pair<double, double>> &ctrlPts) const;
 
+        // Multi-objective weighted sum API
+        void clearObjectiveSpecs() {m_ObjectiveSpecs.clear();}
+        void addObjectiveSpec(const ObjectiveSpec &spec) {m_ObjectiveSpecs.push_back(spec);}
+        void setObjectiveSpecs(const std::vector<ObjectiveSpec> &specs) {m_ObjectiveSpecs = specs;}
+        int nObjectiveSpecs() const {return static_cast<int>(m_ObjectiveSpecs.size());}
+        const ObjectiveSpec& objectiveSpec(int i) const {return m_ObjectiveSpecs.at(i);}
+        void computeNormFactors();  // Evaluate baseline foil to normalize objectives
+
     private:
         void calcFitness(Particle *pParticle, bool bLong=false, bool bTrace=false) const override;
         bool resolveTarget(bool &useAlpha, double &value) const;
+        double evaluateObjectiveSpec(const Foil &workFoil, const ObjectiveSpec &spec, bool &success) const;
 
         Foil *m_pFoil{nullptr};
         Polar *m_pPolar{nullptr};
@@ -178,6 +198,9 @@ class PSOTaskFoil : public PSOTask
         ObjectiveType m_ObjectiveType{ObjectiveType::MaximizeLD};
         PresetType m_Preset{PresetType::V1_Y_Only};
         double m_TargetValue{0.0};
+
+        // Multi-objective weighted sum
+        std::vector<ObjectiveSpec> m_ObjectiveSpecs;
         double m_Reynolds{1.0e6};
         double m_Mach{0.0};
         double m_NCrit{9.0};

@@ -69,6 +69,29 @@
 
 namespace {
 
+QString objectiveTypeName(PSOTaskFoil::ObjectiveType type)
+{
+    switch(type) {
+        case PSOTaskFoil::ObjectiveType::MinimizeCd:
+            return "Min Cd";
+        case PSOTaskFoil::ObjectiveType::MaximizeLD:
+            return "Max L/D";
+        case PSOTaskFoil::ObjectiveType::MaximizeCl:
+            return "Max Cl";
+        case PSOTaskFoil::ObjectiveType::MinimizeCm:
+            return "Min Cm";
+        case PSOTaskFoil::ObjectiveType::TargetCl:
+            return "Target Cl";
+        case PSOTaskFoil::ObjectiveType::TargetCm:
+            return "Target Cm";
+        case PSOTaskFoil::ObjectiveType::MaximizePowerFactor:
+            return "Max Power";
+        case PSOTaskFoil::ObjectiveType::MaximizeEnduranceFactor:
+            return "Max Endur";
+    }
+    return "Objective";
+}
+
 QString objectiveMetricLabel(PSOTaskFoil::ObjectiveType type)
 {
     switch(type) {
@@ -397,38 +420,33 @@ void OptimizationPanel::setupUI()
 
     inspectorLayout->addWidget(modeGroup);
 
-    // Objectives Group
+    // Objectives Group - Dynamic list with Add button (multi-point optimization)
     auto *objGroup = new QGroupBox("Objectives", inspectorWidget);
-    auto *objLayout = new QGridLayout(objGroup);
-    objLayout->addWidget(new QLabel("Objective"), 0, 0);
-    objLayout->addWidget(new QLabel("Target"), 0, 1);
-    
-    m_ObjectiveCombo = new QComboBox(this);
-    m_ObjectiveCombo->addItem("Minimize Cd", static_cast<int>(PSOTaskFoil::ObjectiveType::MinimizeCd));
-    m_ObjectiveCombo->addItem("Maximize L/D", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeLD));
-    m_ObjectiveCombo->addItem("Maximize Cl", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeCl));
-    m_ObjectiveCombo->addItem("Minimize Cm", static_cast<int>(PSOTaskFoil::ObjectiveType::MinimizeCm));
-    m_ObjectiveCombo->addItem("Target Cl", static_cast<int>(PSOTaskFoil::ObjectiveType::TargetCl));
-    m_ObjectiveCombo->addItem("Target Cm", static_cast<int>(PSOTaskFoil::ObjectiveType::TargetCm));
-    m_ObjectiveCombo->addItem("Max Power Factor", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizePowerFactor));
-    m_ObjectiveCombo->addItem("Max Endurance Factor", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeEnduranceFactor));
-    m_ObjectiveCombo->setToolTip("The primary goal of the optimization.");
-    
-    m_TargetModeCombo = new QComboBox(this);
-    m_TargetModeCombo->addItem("Fixed Alpha", static_cast<int>(PSOTaskFoil::TargetMode::Alpha));
-    m_TargetModeCombo->addItem("Fixed CL", static_cast<int>(PSOTaskFoil::TargetMode::Cl));
-    m_TargetModeCombo->setToolTip("Defines the operating condition constraint.\n"
-                                  "Fixed Alpha: Optimize at a constant Angle of Attack.\n"
-                                  "Fixed CL: Optimize at a constant Lift Coefficient (alpha varies).");
+    auto *objMainLayout = new QVBoxLayout(objGroup);
+    objMainLayout->setSpacing(4);
 
-    m_TargetValueSpin = new QDoubleSpinBox(this);
-    m_TargetValueSpin->setRange(-20, 20); 
-    m_TargetValueSpin->setValue(0.5);
-    m_TargetValueSpin->setToolTip("The value for the selected Target Mode (Alpha in degrees or CL).");
+    // Container for objective rows
+    m_ObjectiveListLayout = new QVBoxLayout();
+    m_ObjectiveListLayout->setSpacing(2);
+    objMainLayout->addLayout(m_ObjectiveListLayout);
 
-    objLayout->addWidget(m_ObjectiveCombo, 1, 0);
-    objLayout->addWidget(m_TargetModeCombo, 1, 1);
-    objLayout->addWidget(m_TargetValueSpin, 1, 2);
+    // Normalization checkbox
+    m_cbNormalizeObjectives = new QCheckBox("Auto-normalize objectives", this);
+    m_cbNormalizeObjectives->setToolTip("Automatically normalize objectives based on baseline foil performance.\n"
+                                         "This ensures objectives with different scales (e.g., Cd ~0.01, L/D ~50)\n"
+                                         "contribute equally to the weighted sum.");
+    m_cbNormalizeObjectives->setChecked(true);
+    objMainLayout->addWidget(m_cbNormalizeObjectives);
+
+    // Add objective button
+    m_AddObjectiveBtn = new QPushButton("+ Add Objective", this);
+    m_AddObjectiveBtn->setToolTip("Add a new objective for multi-point optimization");
+    connect(m_AddObjectiveBtn, &QPushButton::clicked, this, &OptimizationPanel::addObjectiveRow);
+    objMainLayout->addWidget(m_AddObjectiveBtn);
+
+    // Add one default objective row
+    addObjectiveRow();
+
     inspectorLayout->addWidget(objGroup);
 
     // Constraints Group - Dynamic list with Add button
@@ -548,33 +566,50 @@ void OptimizationPanel::onRun()
         m_pSectionView->update();
     }
 
-    // Configure Objectives
-    m_pTask->setNObjectives(1);
-    m_pTask->setObjective(0, OptObjective("Fitness", 0, true, 0.0, 0.0, xfl::MINIMIZE));
+    // Configure Objectives (multi-point weighted sum)
+    m_pTask->setNObjectives(1);  // Weighted sum produces single fitness value
+    m_pTask->setObjective(0, OptObjective("WeightedSum", 0, true, 0.0, 0.0, xfl::MINIMIZE));
 
-    PSOTaskFoil::ObjectiveType objType = static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
-    m_pTask->setObjectiveType(objType);
+    auto objectiveSpecs = buildObjectiveSpecs();
+    m_pTask->setObjectiveSpecs(objectiveSpecs);
 
-    const QString objectiveLabel = m_ObjectiveCombo->currentText();
-    const QString metricLabel = objectiveMetricLabel(objType);
+    // Compute normalization factors from baseline foil
+    if(m_cbNormalizeObjectives->isChecked())
+    {
+        log("Computing normalization factors from base foil...");
+        m_pTask->computeNormFactors();
+    }
+
+    // Build objective description for graph and logging
+    QString objectiveLabel = "Multi-Objective";
+    if(objectiveSpecs.size() == 1)
+    {
+        // Single objective - use its name
+        if(!m_ObjectiveRows.isEmpty() && m_ObjectiveRows.first()->objectiveCombo)
+            objectiveLabel = m_ObjectiveRows.first()->objectiveCombo->currentText();
+    }
+
     m_pGraph->setName(QString("Optimization Progress - %1").arg(objectiveLabel));
-    m_pGraph->setYVariableList({QString("Fitness (%1)").arg(objectiveLabel), metricLabel});
+    m_pGraph->setYVariableList({QString("Fitness (%1)").arg(objectiveLabel), "Metric"});
     m_pGraph->setVariables(0, 0, 1);
     if(m_pFitnessCurve)
         m_pFitnessCurve->setName(QString("Fitness (%1)").arg(objectiveLabel));
     if(m_pMetricCurve)
-        m_pMetricCurve->setName(metricLabel);
+        m_pMetricCurve->setName("Metric");
 
     m_BestValid = false;
 
-    // Configure Target
-    PSOTaskFoil::TargetMode targetMode = static_cast<PSOTaskFoil::TargetMode>(m_TargetModeCombo->currentData().toInt());
-    double targetVal = m_TargetValueSpin->value();
-
-    if (targetMode == PSOTaskFoil::TargetMode::Alpha)
-        m_pTask->setTargetAlpha(targetVal);
-    else
-        m_pTask->setTargetCl(targetVal);
+    // Log objectives
+    for(const auto &spec : objectiveSpecs)
+    {
+        QString targetStr = (spec.targetMode == PSOTaskFoil::TargetMode::Alpha)
+            ? QString("α=%1°").arg(spec.targetValue, 0, 'f', 1)
+            : QString("Cl=%1").arg(spec.targetValue, 0, 'f', 2);
+        log(QString("  Objective: %1 @ %2, weight=%3")
+            .arg(objectiveTypeName(spec.type))
+            .arg(targetStr)
+            .arg(spec.weight, 0, 'f', 2));
+    }
 
     // Configure Mode (A or B)
     if (m_rbModeB->isChecked()) {
@@ -592,13 +627,18 @@ void OptimizationPanel::onRun()
         int wingIndex = m_WingCombo->currentData().toInt();
         int sectionIndex = m_SectionCombo->currentData().toInt();
 
+        // Get target alpha from first objective (if alpha mode) for 3D analysis
+        double geometricAlpha = 2.0;  // Default
+        if(!objectiveSpecs.empty() && objectiveSpecs.front().targetMode == PSOTaskFoil::TargetMode::Alpha)
+            geometricAlpha = objectiveSpecs.front().targetValue;
+
         // Run 3D analysis to get induced alpha
         log(QString("Mode B: Running 3D analysis for %1, wing %2, section %3...")
             .arg(planeName).arg(wingIndex).arg(sectionIndex));
 
         InducedAoAAdapter adapter;
         adapter.setPlane(pPlane, wingIndex, sectionIndex);
-        adapter.setFlightConditions(targetVal, 30.0, 1.225, 1.5e-5);  // Use target alpha, default velocity
+        adapter.setFlightConditions(geometricAlpha, 30.0, 1.225, 1.5e-5);
         adapter.setNCrit(m_sbNCrit->value());
         adapter.setMach(m_sbMach->value());
 
@@ -614,7 +654,7 @@ void OptimizationPanel::onRun()
             m_CachedInducedAlpha = adapter.inducedAlpha();
             double effectiveAlpha = adapter.effectiveAlpha();
 
-            log(QString("Mode B: Geometric AoA = %1 deg").arg(targetVal, 0, 'f', 2));
+            log(QString("Mode B: Geometric AoA = %1 deg").arg(geometricAlpha, 0, 'f', 2));
             log(QString("Mode B: Induced AoA = %1 deg").arg(m_CachedInducedAlpha, 0, 'f', 2));
             log(QString("Mode B: Effective AoA = %1 deg").arg(effectiveAlpha, 0, 'f', 2));
 
@@ -704,7 +744,12 @@ void OptimizationPanel::updateUI(bool isRunning)
     m_CancelButton->setEnabled(isRunning);
     m_ApplyBestButton->setEnabled(!isRunning && m_BestValid);
     m_PresetCombo->setEnabled(!isRunning);
-    m_ObjectiveCombo->setEnabled(!isRunning);
+    m_AddObjectiveBtn->setEnabled(!isRunning);
+    for(auto *row : m_ObjectiveRows)
+    {
+        if(row && row->widget)
+            row->widget->setEnabled(!isRunning);
+    }
 }
 
 void OptimizationPanel::customEvent(QEvent *event)
@@ -730,11 +775,8 @@ void OptimizationPanel::customEvent(QEvent *event)
         if(pEvent) {
             m_ProgressBar->setValue(pEvent->iter());
             m_StatusLabel->setText(QString("Iteration %1 / %2").arg(pEvent->iter()).arg(PSOTask::s_MaxIter));
-            
+
             double bestFitness = pEvent->particle().fitness(0);
-            const PSOTaskFoil::ObjectiveType objType =
-                static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
-            const double metric = objectiveMetricFromFitness(objType, bestFitness);
 
             // Only add to plot if fitness is reasonable (not a penalty value)
             // Penalty values are ~1e12 which make the plot unreadable
@@ -743,18 +785,18 @@ void OptimizationPanel::customEvent(QEvent *event)
             {
                 if(m_pFitnessCurve)
                     m_pFitnessCurve->appendPoint(pEvent->iter(), bestFitness);
-                if(m_pMetricCurve)
-                    m_pMetricCurve->appendPoint(pEvent->iter(), metric);
             }
 
-            const QString metricLabel = objectiveMetricLabel(objType);
-            const QString info = QString("Iter %1/%2\nFitness: %3\n%4: %5\nObjective: %6")
+            // Build objective label for display
+            QString objLabel = "Multi-Objective";
+            if(m_ObjectiveRows.size() == 1 && m_ObjectiveRows.first()->objectiveCombo)
+                objLabel = m_ObjectiveRows.first()->objectiveCombo->currentText();
+
+            const QString info = QString("Iter %1/%2\nFitness: %3\nObjective: %4")
                                      .arg(pEvent->iter())
                                      .arg(PSOTask::s_MaxIter)
                                      .arg(bestFitness, 0, 'g', 6)
-                                     .arg(metricLabel)
-                                     .arg(metric, 0, 'g', 6)
-                                     .arg(m_ObjectiveCombo ? m_ObjectiveCombo->currentText() : QString("Fitness"));
+                                     .arg(objLabel);
             if(m_pGraphWt)
                 m_pGraphWt->setOutputInfo(info);
 
@@ -779,16 +821,15 @@ void OptimizationPanel::customEvent(QEvent *event)
              m_pGraph->resetLimits();
              m_pGraphWt->update();
 
-             const PSOTaskFoil::ObjectiveType objType =
-                 static_cast<PSOTaskFoil::ObjectiveType>(m_ObjectiveCombo->currentData().toInt());
-             const double metric = objectiveMetricFromFitness(objType, m_BestParticle.fitness(0));
-             const QString metricLabel = objectiveMetricLabel(objType);
-             const QString info = QString("Iterations: %1\nFitness: %2\n%3: %4\nObjective: %5")
+             // Build objective label for display
+             QString objLabel = "Multi-Objective";
+             if(m_ObjectiveRows.size() == 1 && m_ObjectiveRows.first()->objectiveCombo)
+                 objLabel = m_ObjectiveRows.first()->objectiveCombo->currentText();
+
+             const QString info = QString("Iterations: %1\nFitness: %2\nObjective: %3")
                                       .arg(PSOTask::s_MaxIter)
                                       .arg(m_BestParticle.fitness(0), 0, 'g', 6)
-                                      .arg(metricLabel)
-                                      .arg(metric, 0, 'g', 6)
-                                      .arg(m_ObjectiveCombo ? m_ObjectiveCombo->currentText() : QString("Fitness"));
+                                      .arg(objLabel);
              if(m_pGraphWt)
                  m_pGraphWt->setOutputInfo(info);
 
@@ -1290,4 +1331,114 @@ PSOTaskFoil::Constraints OptimizationPanel::buildConstraints() const
     }
 
     return c;
+}
+
+void OptimizationPanel::addObjectiveRow()
+{
+    auto *row = new ObjectiveRow();
+    row->widget = new QWidget(this);
+    auto *layout = new QHBoxLayout(row->widget);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
+
+    // Objective type combo
+    row->objectiveCombo = new QComboBox(this);
+    row->objectiveCombo->addItem("Min Cd", static_cast<int>(PSOTaskFoil::ObjectiveType::MinimizeCd));
+    row->objectiveCombo->addItem("Max L/D", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeLD));
+    row->objectiveCombo->addItem("Max Cl", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeCl));
+    row->objectiveCombo->addItem("Min Cm", static_cast<int>(PSOTaskFoil::ObjectiveType::MinimizeCm));
+    row->objectiveCombo->addItem("Max Power", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizePowerFactor));
+    row->objectiveCombo->addItem("Max Endur", static_cast<int>(PSOTaskFoil::ObjectiveType::MaximizeEnduranceFactor));
+    row->objectiveCombo->setFixedWidth(80);
+    layout->addWidget(row->objectiveCombo, 2);
+
+    // Target mode combo
+    row->targetModeCombo = new QComboBox(this);
+    row->targetModeCombo->addItem("α", static_cast<int>(PSOTaskFoil::TargetMode::Alpha));
+    row->targetModeCombo->addItem("Cl", static_cast<int>(PSOTaskFoil::TargetMode::Cl));
+    row->targetModeCombo->setFixedWidth(40);
+    row->targetModeCombo->setCurrentIndex(1);  // Default to Cl
+    layout->addWidget(row->targetModeCombo, 1);
+
+    // Target value spinbox
+    row->targetValueSpin = new QDoubleSpinBox(this);
+    row->targetValueSpin->setRange(-20, 20);
+    row->targetValueSpin->setValue(0.5);
+    row->targetValueSpin->setDecimals(2);
+    row->targetValueSpin->setFixedWidth(60);
+    layout->addWidget(row->targetValueSpin, 1);
+
+    // Weight spinbox
+    row->weightSpin = new QDoubleSpinBox(this);
+    row->weightSpin->setRange(0.0, 10.0);
+    row->weightSpin->setValue(1.0);
+    row->weightSpin->setSingleStep(0.1);
+    row->weightSpin->setDecimals(2);
+    row->weightSpin->setFixedWidth(50);
+    row->weightSpin->setToolTip("Relative weight for this objective (higher = more important)");
+    layout->addWidget(row->weightSpin, 1);
+
+    // Delete button
+    row->deleteBtn = new QPushButton("×", this);
+    row->deleteBtn->setFixedWidth(24);
+    row->deleteBtn->setToolTip("Remove objective");
+    layout->addWidget(row->deleteBtn);
+
+    // Connect signals
+    connect(row->deleteBtn, &QPushButton::clicked,
+            this, [this, row]() { removeObjectiveRow(row); });
+
+    m_ObjectiveRows.append(row);
+    m_ObjectiveListLayout->addWidget(row->widget);
+
+    // Disable delete if only one row
+    updateObjectiveDeleteButtons();
+}
+
+void OptimizationPanel::removeObjectiveRow(ObjectiveRow *row)
+{
+    if(!row || m_ObjectiveRows.size() <= 1)
+        return;  // Must have at least one objective
+
+    m_ObjectiveListLayout->removeWidget(row->widget);
+    m_ObjectiveRows.removeOne(row);
+    row->widget->deleteLater();
+    delete row;
+
+    updateObjectiveDeleteButtons();
+}
+
+void OptimizationPanel::updateObjectiveDeleteButtons()
+{
+    bool canDelete = m_ObjectiveRows.size() > 1;
+    for(auto *row : m_ObjectiveRows)
+    {
+        if(row && row->deleteBtn)
+            row->deleteBtn->setEnabled(canDelete);
+    }
+}
+
+std::vector<PSOTaskFoil::ObjectiveSpec> OptimizationPanel::buildObjectiveSpecs() const
+{
+    std::vector<PSOTaskFoil::ObjectiveSpec> specs;
+
+    for(const auto *row : m_ObjectiveRows)
+    {
+        if(!row || !row->objectiveCombo || !row->targetModeCombo ||
+           !row->targetValueSpin || !row->weightSpin)
+            continue;
+
+        PSOTaskFoil::ObjectiveSpec spec;
+        spec.type = static_cast<PSOTaskFoil::ObjectiveType>(
+            row->objectiveCombo->currentData().toInt());
+        spec.targetMode = static_cast<PSOTaskFoil::TargetMode>(
+            row->targetModeCombo->currentData().toInt());
+        spec.targetValue = row->targetValueSpin->value();
+        spec.weight = row->weightSpin->value();
+        spec.enabled = true;
+
+        specs.push_back(spec);
+    }
+
+    return specs;
 }

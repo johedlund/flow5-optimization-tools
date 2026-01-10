@@ -924,6 +924,143 @@ bool PSOTaskFoil::resolveTarget(bool &useAlpha, double &value) const
     return false;
 }
 
+double PSOTaskFoil::evaluateObjectiveSpec(const Foil &workFoil, const ObjectiveSpec &spec, bool &success) const
+{
+    success = false;
+
+    // Make a mutable copy for XFoilTask (which requires non-const Foil&)
+    Foil foilCopy = workFoil;
+
+    Polar workPolar;
+    if(m_pPolar)
+        workPolar.copySpecification(*m_pPolar);
+    workPolar.setReynolds(m_Reynolds);
+    workPolar.setMach(m_Mach);
+    workPolar.setNCrit(m_NCrit);
+    workPolar.reset();
+    workPolar.setFoilName(foilCopy.name());
+
+    XFoilTask *task = new XFoilTask();
+    XFoilTask::setCancelled(false);
+
+    bool useAlpha = (spec.targetMode == TargetMode::Alpha);
+    double target = spec.targetValue;
+
+    // Mode B induced alpha correction
+    if(m_OptMode == OptimizationMode::ModeB && useAlpha && std::isfinite(m_InducedAlpha))
+        target += m_InducedAlpha;
+
+    task->setAoAAnalysis(useAlpha);
+    task->clearRanges();
+    task->appendRange({true, target, target, 0.0});
+
+    if(!task->initialize(foilCopy, &workPolar, true))
+    {
+        delete task;
+        return OPTIM_PENALTY;
+    }
+
+    task->run();
+
+    double result = OPTIM_PENALTY;
+    const std::vector<OpPoint*> &opps = task->operatingPoints();
+
+    if(!opps.empty() && !task->hasErrors())
+    {
+        const OpPoint *pOpp = opps.front();
+        const double cl = pOpp->m_Cl;
+        const double cd = pOpp->m_Cd;
+        const double cm = pOpp->m_Cm;
+
+        if(std::isfinite(cl) && std::isfinite(cd) && std::isfinite(cm) && cd > 1.0e-12)
+        {
+            success = true;
+            switch(spec.type)
+            {
+                case ObjectiveType::MinimizeCd:
+                    result = cd;
+                    break;
+                case ObjectiveType::MaximizeLD:
+                    result = -cl / cd;  // Negate for minimization
+                    break;
+                case ObjectiveType::MaximizeCl:
+                    result = -cl;  // Negate for minimization
+                    break;
+                case ObjectiveType::MinimizeCm:
+                    result = std::abs(cm);
+                    break;
+                case ObjectiveType::TargetCl:
+                    result = std::abs(cl - spec.targetValue);
+                    break;
+                case ObjectiveType::TargetCm:
+                    result = std::abs(cm);  // Target Cm not directly supported, use magnitude
+                    break;
+                case ObjectiveType::MaximizePowerFactor:
+                    if(cl > 0.0)
+                        result = -std::pow(cl, 1.5) / cd;
+                    break;
+                case ObjectiveType::MaximizeEnduranceFactor:
+                    if(cl > 0.0)
+                        result = -std::pow(cl, 3.0) / std::pow(cd, 2.0);
+                    break;
+            }
+        }
+    }
+
+    for(OpPoint *pOpp : opps)
+        delete pOpp;
+    delete task;
+
+    return result;
+}
+
+void PSOTaskFoil::computeNormFactors()
+{
+    if(!m_pFoil || m_ObjectiveSpecs.empty())
+        return;
+
+    // Evaluate base foil at each operating point to get baseline values
+    for(auto &spec : m_ObjectiveSpecs)
+    {
+        bool success = false;
+        double baseValue = evaluateObjectiveSpec(*m_pFoil, spec, success);
+
+        if(success && std::isfinite(baseValue) && std::abs(baseValue) > 1.0e-12)
+        {
+            // Use absolute value as normalization factor
+            spec.normFactor = std::abs(baseValue);
+        }
+        else
+        {
+            // Default normalization factors based on objective type
+            switch(spec.type)
+            {
+                case ObjectiveType::MinimizeCd:
+                    spec.normFactor = 0.01;  // Typical Cd
+                    break;
+                case ObjectiveType::MaximizeLD:
+                    spec.normFactor = 50.0;  // Typical L/D (negated)
+                    break;
+                case ObjectiveType::MaximizeCl:
+                    spec.normFactor = 1.0;   // Typical Cl
+                    break;
+                case ObjectiveType::MinimizeCm:
+                    spec.normFactor = 0.1;   // Typical |Cm|
+                    break;
+                case ObjectiveType::MaximizePowerFactor:
+                    spec.normFactor = 100.0;
+                    break;
+                case ObjectiveType::MaximizeEnduranceFactor:
+                    spec.normFactor = 1000.0;
+                    break;
+                default:
+                    spec.normFactor = 1.0;
+                    break;
+            }
+        }
+    }
+}
+
 void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 {
     m_Variable.clear();
@@ -1737,6 +1874,51 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         }
     }
 
+    // Multi-objective weighted sum path
+    if(!m_ObjectiveSpecs.empty())
+    {
+        double weightedSum = 0.0;
+        double totalWeight = 0.0;
+        bool allSucceeded = true;
+
+        for(const auto &spec : m_ObjectiveSpecs)
+        {
+            if(!spec.enabled)
+                continue;
+
+            bool success = false;
+            double rawFitness = evaluateObjectiveSpec(workFoil, spec, success);
+
+            if(!success || !std::isfinite(rawFitness) || rawFitness >= OPTIM_PENALTY)
+            {
+                allSucceeded = false;
+                break;
+            }
+
+            // Normalize and weight
+            double normalizedFitness = rawFitness;
+            if(spec.normFactor > 1.0e-12)
+                normalizedFitness = rawFitness / spec.normFactor;
+
+            weightedSum += spec.weight * normalizedFitness;
+            totalWeight += spec.weight;
+        }
+
+        if(allSucceeded && totalWeight > 1.0e-12)
+        {
+            pParticle->setFitness(0, weightedSum / totalWeight);
+            pParticle->setConverged(true);
+        }
+        else
+        {
+            pParticle->setFitness(0, OPTIM_PENALTY);
+        }
+
+        if(bTrace) postParticleEvent();
+        return;
+    }
+
+    // Legacy single-objective path
     Polar workPolar;
     if(m_pPolar)
         workPolar.copySpecification(*m_pPolar);

@@ -60,6 +60,16 @@ struct ConstraintRow {
     QPushButton *deleteBtn{nullptr};
 };
 
+// Dynamic objective row widget (multi-point optimization)
+struct ObjectiveRow {
+    QWidget *widget{nullptr};
+    QComboBox *objectiveCombo{nullptr};   // MinimizeCd, MaximizeLD, etc.
+    QComboBox *targetModeCombo{nullptr};  // Alpha or Cl
+    QDoubleSpinBox *targetValueSpin{nullptr};
+    QDoubleSpinBox *weightSpin{nullptr};
+    QPushButton *deleteBtn{nullptr};
+};
+
 class OptimizationPanel : public QWidget
 {
     Q_OBJECT
@@ -103,6 +113,12 @@ private:
     void onRefCheckChanged(ConstraintRow *row, bool checked);
     double getReferenceValue(int paramIndex) const;
     PSOTaskFoil::Constraints buildConstraints() const;
+
+    // Dynamic objectives (multi-point optimization)
+    void addObjectiveRow();
+    void removeObjectiveRow(ObjectiveRow *row);
+    void updateObjectiveDeleteButtons();
+    std::vector<PSOTaskFoil::ObjectiveSpec> buildObjectiveSpecs() const;
 
     // Optimization preview
     void updateOptimMarkersPreview();
@@ -148,10 +164,11 @@ private:
     QComboBox *m_SectionCombo;
     double m_CachedInducedAlpha{0.0};
 
-    // Objectives
-    QComboBox *m_ObjectiveCombo;
-    QComboBox *m_TargetModeCombo;
-    QDoubleSpinBox *m_TargetValueSpin;
+    // Dynamic Objectives (multi-point optimization)
+    QVBoxLayout *m_ObjectiveListLayout{nullptr};
+    QPushButton *m_AddObjectiveBtn{nullptr};
+    QList<ObjectiveRow*> m_ObjectiveRows;
+    QCheckBox *m_cbNormalizeObjectives{nullptr};
 
     // Dynamic Constraints
     QVBoxLayout *m_ConstraintListLayout{nullptr};
