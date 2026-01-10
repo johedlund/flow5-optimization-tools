@@ -25,6 +25,7 @@
 #include <interfaces/optim/psotaskfoil.h>
 
 #include <api/cubicspline.h>
+#include <api/bspline.h>
 #include <api/foil.h>
 #include <api/oppoint.h>
 #include <api/polar.h>
@@ -632,21 +633,23 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
                 }
             }
 
-            // 4. Build separate cubic splines for top and bottom with clamped LE tangent
-            CubicSpline topSpline, botSpline;
+            // 4. Build separate B-splines for top and bottom
+            // B-splines use control points as "attractors" - the curve doesn't pass through
+            // intermediate points, just approximates them. This prevents oscillations.
+            // First and last points are clamped (curve passes through them exactly).
+            BSpline topSpline, botSpline;
             const int splineOutputPts = 100;
+            const int bsplineDegree = 3;  // Cubic B-spline
             topSpline.setOutputSize(splineOutputPts);
             botSpline.setOutputSize(splineOutputPts);
 
-            // Set clamped boundary conditions at LE for vertical tangent
-            // Top spline: ends at LE, so clamp the end tangent
-            // Bottom spline: starts at LE, so clamp the start tangent
-            // Use vertical tangent (dx/du=0, dy/du=-1 pointing downward toward bottom surface)
-            topSpline.setClampedEnd(0.0, -1.0);    // Vertical tangent at LE (end of top spline)
-            botSpline.setClampedStart(0.0, -1.0); // Vertical tangent at LE (start of bottom spline)
+            // approximate() requires nCtrlPts > degree, and nCtrlPts < nInputPts
+            // Use fewer control points than input for smoothing effect
+            const int topCtrlPts = std::max(bsplineDegree + 1, int(topNodes.size()) / 2);
+            const int botCtrlPts = std::max(bsplineDegree + 1, int(botNodes.size()) / 2);
 
-            topSpline.approximate(int(topNodes.size()), topNodes);
-            botSpline.approximate(int(botNodes.size()), botNodes);
+            topSpline.approximate(bsplineDegree, topCtrlPts, topNodes);
+            botSpline.approximate(bsplineDegree, botCtrlPts, botNodes);
 
             if(debugSpline)
             {
@@ -1417,18 +1420,18 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                 }
             }
 
-            // 4. Build separate cubic splines with clamped LE tangent
-            CubicSpline topSpline, botSpline;
+            // 4. Build separate B-splines for top and bottom (approximating, not interpolating)
+            BSpline topSpline, botSpline;
             const int splineOutputPts = 100;
+            const int bsplineDegree = 3;
             topSpline.setOutputSize(splineOutputPts);
             botSpline.setOutputSize(splineOutputPts);
 
-            // Set clamped boundary conditions at LE for vertical tangent
-            topSpline.setClampedEnd(0.0, -1.0);    // Vertical tangent at LE (end of top spline)
-            botSpline.setClampedStart(0.0, -1.0); // Vertical tangent at LE (start of bottom spline)
+            const int topCtrlPts = std::max(bsplineDegree + 1, int(topNodes.size()) / 2);
+            const int botCtrlPts = std::max(bsplineDegree + 1, int(botNodes.size()) / 2);
 
-            const bool topOk = topSpline.approximate(int(topNodes.size()), topNodes);
-            const bool botOk = botSpline.approximate(int(botNodes.size()), botNodes);
+            const bool topOk = topSpline.approximate(bsplineDegree, topCtrlPts, topNodes);
+            const bool botOk = botSpline.approximate(bsplineDegree, botCtrlPts, botNodes);
 
             if(debugSpline)
             {
