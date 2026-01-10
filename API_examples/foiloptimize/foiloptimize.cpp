@@ -293,10 +293,55 @@ int main(int argc, char **argv)
     std::cout << "  Variables: " << minVars << " (Expected: 0 or 1 with LE/TE fixed)\n";
     std::cout << "  Result: " << (minOk ? "PASS" : "FAIL") << "\n";
 
+    // 8. V3 PRESET HANDLING (B-spline control points)
+    std::cout << "Test 8: V3 Preset Handling\n";
+
+    PSOTaskFoil v3Task;
+    v3Task.setFoil(pFoil);
+    v3Task.setPolar(pPolar);
+    v3Task.setPreset(PSOTaskFoil::PresetType::V3_BSpline_Control);
+    v3Task.initVariablesFromFoil();
+
+    const int v3Vars = v3Task.nVariables();
+    // V3 should create control point variables (typically more than V2)
+    const bool v3Ok = (v3Vars >= 4);
+
+    std::cout << "  Preset: V3_BSpline_Control\n";
+    std::cout << "  Variables: " << v3Vars << " (Expected: >= 4 control point vars)\n";
+    std::cout << "  Result: " << (v3Ok ? "PASS" : "FAIL") << "\n";
+
+    // 9. V3 FULL PSO RUN
+    std::cout << "Test 9: V3 Full PSO Run\n";
+
+    PSOTask::s_PopSize = 5;
+    PSOTask::s_MaxIter = 3;
+    PSOTask::s_bMultiThreaded = false;
+
+    PSOTaskFoil v3RunTask;
+    v3RunTask.setFoil(pFoil);
+    v3RunTask.setPolar(pPolar);
+    v3RunTask.setPreset(PSOTaskFoil::PresetType::V3_BSpline_Control);
+    v3RunTask.initVariablesFromFoil();
+    v3RunTask.setTargetAlpha(pPolar->aoaSpec());
+    v3RunTask.setNObjectives(1);
+    v3RunTask.setObjective(0, OptObjective("Cd", 0, true, 0.0, 0.0, xfl::EQUALIZE));
+    v3RunTask.setObjectiveType(PSOTaskFoil::ObjectiveType::MinimizeCd);
+    v3RunTask.setTargetCl(0.73);
+
+    v3RunTask.onMakeParticleSwarm();
+    v3RunTask.onStartIterations();
+
+    const bool v3RunOk = v3RunTask.isFinished() && v3RunTask.paretoSize() > 0;
+
+    std::cout << "  Status: " << (v3RunTask.isFinished() ? "FINISHED" : "RUNNING/PENDING") << "\n";
+    std::cout << "  Pareto Size: " << v3RunTask.paretoSize() << "\n";
+    std::cout << "  Result: " << (v3RunOk ? "PASS" : "FAIL") << "\n";
+
     globals::deleteObjects();
 
     const bool allOk = missingOk && happyOk && sadOk && runOk
-                    && unconvergedOk && cancelOk && v2Ok && minOk;
+                    && unconvergedOk && cancelOk && v2Ok && minOk
+                    && v3Ok && v3RunOk;
 
     std::cout << "\n=== SUMMARY ===\n";
     std::cout << "Test 0 (Missing Target): " << (missingOk ? "PASS" : "FAIL") << "\n";
@@ -307,6 +352,8 @@ int main(int argc, char **argv)
     std::cout << "Test 5 (Cancellation): " << (cancelOk ? "PASS" : "FAIL") << "\n";
     std::cout << "Test 6 (V2 Preset): " << (v2Ok ? "PASS" : "FAIL") << "\n";
     std::cout << "Test 7 (Minimal Geometry): " << (minOk ? "PASS" : "FAIL") << "\n";
+    std::cout << "Test 8 (V3 Preset): " << (v3Ok ? "PASS" : "FAIL") << "\n";
+    std::cout << "Test 9 (V3 PSO Run): " << (v3RunOk ? "PASS" : "FAIL") << "\n";
     std::cout << "===============\n";
     std::cout << "Overall: " << (allOk ? "ALL PASS" : "SOME FAILED") << "\n";
 

@@ -107,3 +107,37 @@ No formal unit test framework. For new solver/optimization code:
 - Add minimal reproducible examples in `API_examples/`
 - Run headless tests before committing: `API_examples/foiloptimize/run_test.sh`
 - Run header lint for new files: `scripts/lint_headers.sh upstream/main`
+
+## V1 Foil Optimization: Lessons Learned (LE Geometry)
+
+**Problem**: V1 optimization creates bad leading edge (LE) geometry - loops, self-intersections, concave regions.
+
+**Failed Approaches (DO NOT REPEAT):**
+
+1. **Split spline with CubicSpline (interpolating)** - LE loops
+   - Interpolating splines force curve through ALL points → oscillations
+   - Natural boundary conditions give no tangent control at LE
+
+2. **Phantom points near LE** - Still loops
+   - Adding phantom points 0.1% chord from LE caused spline oscillation
+   - Whether using + or - signs, the CubicSpline overshoots
+
+3. **Clamped boundary conditions on CubicSpline** - Still loops
+   - Added setClampedStart/End to specify tangent at LE
+   - Vertical tangent (0, -1) didn't prevent the loop
+
+4. **BSpline (approximating) for split spline** - Still loops
+   - Approximating splines with fewer control points still created LE issues
+   - V3 already had this approach and crashes
+
+**Key Insight**: The split-spline approach is fundamentally flawed for this use case. Trying to join two separate splines at the LE always creates discontinuity issues.
+
+**What Actually Works (baseline from before split spline):**
+- Direct Y-offset modification: apply offsets directly to base nodes
+- Let Foil::initGeometry() handle the spline fitting (single continuous spline)
+- Accept that LE geometry may degrade but handle via:
+  - Geometry validation (isFoilGeometryValid) to reject bad particles
+  - Tighter bounds near LE (reduce how much points can move)
+  - m_LEBlendChord to blend optimized shape back toward original near LE
+
+**V3 Status**: Already has B-spline control point approach but crashes - needs debugging, not re-implementing in V1.
