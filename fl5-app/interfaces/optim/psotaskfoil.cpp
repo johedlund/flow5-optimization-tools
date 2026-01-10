@@ -550,10 +550,11 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
         if(!m_OptimBaseNodes.empty())
             pNewFoil->setBaseNodes(m_OptimBaseNodes);
 
-        // Find LE index in the optimized base nodes
+        // Find LE index and chord in the optimized base nodes
         int leOptimIndex = 0;
         const int nOptim = int(m_OptimBaseNodes.size());
         double minX = m_OptimBaseNodes.empty() ? 0.0 : m_OptimBaseNodes[0].x;
+        double maxX = minX;
         for(int i = 1; i < nOptim; ++i)
         {
             if(m_OptimBaseNodes[i].x < minX)
@@ -561,7 +562,10 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
                 minX = m_OptimBaseNodes[i].x;
                 leOptimIndex = i;
             }
+            if(m_OptimBaseNodes[i].x > maxX)
+                maxX = m_OptimBaseNodes[i].x;
         }
+        const double chord = maxX - minX;
 
         // Apply particle position values (X or Y depending on m_VarIsX)
         for(int i=0; i<int(m_VarToBase.size()); ++i)
@@ -571,6 +575,32 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
                 pNewFoil->setBaseNode(baseIndex, p.pos(i), pNewFoil->yb(baseIndex));
             else
                 pNewFoil->setBaseNode(baseIndex, pNewFoil->xb(baseIndex), p.pos(i));
+        }
+
+        // LE blend: smoothly transition from original shape near LE to optimized shape
+        // This prevents spline oscillations from distorting the LE region
+        if(m_LEBlendChord > 0.0 && chord > 0.0)
+        {
+            const double leBlendEnd = minX + m_LEBlendChord * chord;
+            for(int i = 0; i < nOptim; ++i)
+            {
+                if(i == leOptimIndex)
+                    continue;  // Skip LE point itself
+
+                const double x = pNewFoil->xb(i);
+                if(x < leBlendEnd)
+                {
+                    // Calculate blend factor: 0 at LE, 1 at blend end (smoothstep)
+                    const double t = (x - minX) / (leBlendEnd - minX);
+                    const double blend = t * t * (3.0 - 2.0 * t);  // smoothstep
+
+                    // Blend Y between original and optimized
+                    const double originalY = m_OptimBaseNodes[i].y;
+                    const double optimizedY = pNewFoil->yb(i);
+                    const double blendedY = originalY * (1.0 - blend) + optimizedY * blend;
+                    pNewFoil->setBaseNode(i, x, blendedY);
+                }
+            }
         }
 
         // For symmetric mode, mirror upper surface to lower surface
@@ -1011,7 +1041,7 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
     // High-leverage points near LE cause LE distortion when moved
     const double leX = minX;
     const double chord = maxX - minX;
-    const double leExclusionX = leX + m_LEExclusionChord * chord;
+    const double leExclusionX = leX + m_LEBlendChord * chord;
 
     if(m_bSymmetric)
     {
@@ -1205,21 +1235,22 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         if(!m_OptimBaseNodes.empty())
             workFoil.setBaseNodes(m_OptimBaseNodes);
 
-        // Find LE index in the optimized base nodes
+        // Find LE index and chord in the optimized base nodes
         int leOptimIndex = 0;
         const int nOptim = int(m_OptimBaseNodes.size());
-        if(nOptim > 0)
+        double minX = m_OptimBaseNodes.empty() ? 0.0 : m_OptimBaseNodes[0].x;
+        double maxX = minX;
+        for(int i = 1; i < nOptim; ++i)
         {
-            double minX = m_OptimBaseNodes[0].x;
-            for(int i = 1; i < nOptim; ++i)
+            if(m_OptimBaseNodes[i].x < minX)
             {
-                if(m_OptimBaseNodes[i].x < minX)
-                {
-                    minX = m_OptimBaseNodes[i].x;
-                    leOptimIndex = i;
-                }
+                minX = m_OptimBaseNodes[i].x;
+                leOptimIndex = i;
             }
+            if(m_OptimBaseNodes[i].x > maxX)
+                maxX = m_OptimBaseNodes[i].x;
         }
+        const double chord = maxX - minX;
 
         // Apply particle position values (X or Y depending on m_VarIsX)
         for(int i=0; i<int(m_VarToBase.size()); ++i)
@@ -1229,6 +1260,29 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
                 workFoil.setBaseNode(baseIndex, pParticle->pos(i), workFoil.yb(baseIndex));
             else
                 workFoil.setBaseNode(baseIndex, workFoil.xb(baseIndex), pParticle->pos(i));
+        }
+
+        // LE blend: smoothly transition from original shape near LE to optimized shape
+        if(m_LEBlendChord > 0.0 && chord > 0.0)
+        {
+            const double leBlendEnd = minX + m_LEBlendChord * chord;
+            for(int i = 0; i < nOptim; ++i)
+            {
+                if(i == leOptimIndex)
+                    continue;
+
+                const double x = workFoil.xb(i);
+                if(x < leBlendEnd)
+                {
+                    const double t = (x - minX) / (leBlendEnd - minX);
+                    const double blend = t * t * (3.0 - 2.0 * t);  // smoothstep
+
+                    const double originalY = m_OptimBaseNodes[i].y;
+                    const double optimizedY = workFoil.yb(i);
+                    const double blendedY = originalY * (1.0 - blend) + optimizedY * blend;
+                    workFoil.setBaseNode(i, x, blendedY);
+                }
+            }
         }
 
         // For symmetric mode, mirror upper surface to lower surface

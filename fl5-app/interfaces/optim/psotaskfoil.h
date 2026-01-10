@@ -185,9 +185,8 @@ class PSOTaskFoil : public PSOTask
         double m_BoundsScale{1.0};
         bool m_bSymmetric{false};
 
-        // LE protection: skip optimization variables for points too close to LE
-        // Points within exclusion zone remain in base nodes for spline but don't get variables
-        double m_LEExclusionChord{0.03};  // Skip variables for points within 3% chord of LE
+        // LE protection: blend optimized shape back toward original near LE
+        double m_LEBlendChord{0.05};      // Blend region: 0-5% chord transitions from original to optimized
 
         // V3 B-spline X-movement (kept for V3 compatibility, not used in V1)
         int m_LEXPoints{2};               // Number of LE-adjacent control points with X movement
