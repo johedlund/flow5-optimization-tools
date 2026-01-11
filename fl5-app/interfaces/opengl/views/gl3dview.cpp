@@ -1103,7 +1103,7 @@ void gl3dView::keyReleaseEvent(QKeyEvent *pEvent)
 void gl3dView::hideEvent(QHideEvent *pEvent)
 {
     stopDynamicTimer();
-    pEvent->ignore();
+    QOpenGLWidget::hideEvent(pEvent);
 }
 
 
