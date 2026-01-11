@@ -92,6 +92,7 @@ class FL5LIB_EXPORT Foil : public XflObject
         void makeNormalsFromCubic();
 
         bool makeApproxBSpline(BSpline &bs, int deg, int nCtrlPts, int nOutputPts) const;
+        bool makeSampledBSpline(BSpline &bs, int deg, int nCtrlPts, int nOutputPts) const;
 
         bool sharpTE() const;
         Vector2d TEbisector() const;

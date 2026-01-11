@@ -1154,9 +1154,11 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         m_BSplineDegree = 3; // Cubic B-spline
         m_BSplineOutputPts = std::max(100, nBase);
 
-        // Create B-spline approximation of the original foil
+        // Create B-spline by sampling foil at evenly-spaced points
+        // (Unlike makeApproxBSpline which uses least-squares and can place
+        // control points anywhere, this ensures they follow the foil contour)
         m_BaseBSpline.resetSpline();
-        if(!m_pFoil->makeApproxBSpline(m_BaseBSpline, m_BSplineDegree, m_BSplineCtrlPts, m_BSplineOutputPts))
+        if(!m_pFoil->makeSampledBSpline(m_BaseBSpline, m_BSplineDegree, m_BSplineCtrlPts, m_BSplineOutputPts))
             return;
 
         const int nCtrl = m_BaseBSpline.nCtrlPoints();

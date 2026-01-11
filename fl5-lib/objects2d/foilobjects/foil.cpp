@@ -1032,6 +1032,45 @@ bool Foil::makeApproxBSpline(BSpline &bs, int deg, int nCtrlPts, int nOutputPts)
 }
 
 
+bool Foil::makeSampledBSpline(BSpline &bs, int deg, int nCtrlPts, int nOutputPts) const
+{
+    // Create a B-spline by sampling base nodes at evenly-spaced indices
+    // This ensures control points are distributed along the foil curve,
+    // unlike approximate() which can place them anywhere via least-squares.
+
+    const int nBase = nBaseNodes();
+    if(nCtrlPts < 4 || nCtrlPts >= nBase)
+        return false;
+
+    bs.resetSpline();
+    bs.setOutputSize(nOutputPts);
+    bs.setDegree(deg);
+
+    // Sample base nodes at evenly-spaced indices
+    std::vector<Node2d> ctrlPts(nCtrlPts);
+    for(int i = 0; i < nCtrlPts; ++i)
+    {
+        // Map index i to base node index
+        const int baseIdx = (i * (nBase - 1)) / (nCtrlPts - 1);
+        ctrlPts[i].set(xb(baseIdx), yb(baseIdx));
+    }
+
+    // Force first and last to exactly match endpoints
+    ctrlPts.front().set(xb(0), yb(0));
+    ctrlPts.back().set(xb(nBase - 1), yb(nBase - 1));
+
+    bs.setCtrlPoints(ctrlPts);
+    // setCtrlPoints already sets uniform weights
+
+    // updateSpline() returns true if SINGULAR (failed), false if OK
+    if(bs.updateSpline())
+        return false;
+
+    bs.makeCurve();
+    return true;
+}
+
+
 bool Foil::makeTopBotSurfaces()
 {
     m_BaseTop.clear();
