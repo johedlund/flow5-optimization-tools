@@ -927,21 +927,8 @@ void OptimizationPanel::customEvent(QEvent *event)
                  m_pGraphWt->setOutputInfo(info);
 
              if(m_BestValid) {
-                 m_StatusLabel->setText("Optimization finished.");
+                 m_StatusLabel->setText("Optimization finished. Click 'Apply' to create foil.");
                  log("Optimization finished. Apply to use the best result.");
-
-                 // Only show completion dialog after the last run of a batch
-                 if(m_CurrentRun >= m_TotalRuns)
-                 {
-                     QString summary = QString("Optimization completed successfully.\n\n"
-                                               "Iterations: %1\n"
-                                               "Best Fitness: %2\n\n"
-                                               "Click 'Apply' to create the optimized foil.")
-                                               .arg(PSOTask::s_MaxIter)
-                                               .arg(m_BestParticle.fitness(0), 0, 'g', 6);
-                     QMessageBox::information(this, "Optimization Results", summary);
-                 }
-
              } else {
                  m_StatusLabel->setText("Optimization finished (no valid result).");
                  log("Warning: No converged solution found. All particles may have hit constraints or XFoil failed to converge.");
