@@ -154,6 +154,28 @@ OptimizationPanel::~OptimizationPanel()
     clearPreviewFoils();
 }
 
+bool OptimizationPanel::eventFilter(QObject *obj, QEvent *event)
+{
+    // Block wheel events on spinboxes/comboboxes that don't have focus
+    // This prevents accidental value changes when scrolling the panel
+    if(event->type() == QEvent::Wheel)
+    {
+        QWidget *widget = qobject_cast<QWidget*>(obj);
+        if(widget && !widget->hasFocus())
+        {
+            event->ignore();
+            return true;  // Event handled (blocked)
+        }
+    }
+    return QWidget::eventFilter(obj, event);
+}
+
+void OptimizationPanel::installScrollGuard(QWidget *widget)
+{
+    widget->setFocusPolicy(Qt::StrongFocus);
+    widget->installEventFilter(this);
+}
+
 void OptimizationPanel::initPanel(Foil *pFoil, Polar *pPolar)
 {
     m_pFoil = pFoil;
@@ -540,6 +562,23 @@ void OptimizationPanel::setupUI()
     // Initial sizes
     mainSplitter->setStretchFactor(0, 3);
     mainSplitter->setStretchFactor(1, 2);
+
+    // Install scroll guards on all spinboxes and comboboxes to prevent
+    // accidental value changes when scrolling the panel
+    installScrollGuard(m_PresetCombo);
+    installScrollGuard(m_sbOptimPoints);
+    installScrollGuard(m_sbBoundsScale);
+    installScrollGuard(m_sbXBoundsScale);
+    installScrollGuard(m_sbXMoveMin);
+    installScrollGuard(m_sbXMoveMax);
+    installScrollGuard(m_sbMaxIter);
+    installScrollGuard(m_sbBatchRuns);
+    installScrollGuard(m_sbReynolds);
+    installScrollGuard(m_sbMach);
+    installScrollGuard(m_sbNCrit);
+    installScrollGuard(m_PlaneCombo);
+    installScrollGuard(m_WingCombo);
+    installScrollGuard(m_SectionCombo);
 }
 
 void OptimizationPanel::log(const QString &msg)
@@ -1286,6 +1325,11 @@ void OptimizationPanel::addConstraintRow()
     row->rejectCountLabel->hide();  // Hidden until optimization runs
     layout->addWidget(row->rejectCountLabel);
 
+    // Install scroll guards on combo boxes and spinboxes
+    installScrollGuard(row->paramCombo);
+    installScrollGuard(row->opCombo);
+    installScrollGuard(row->valueSpin);
+
     // Connect signals
     connect(row->paramCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this, row](int) { onParamChanged(row); });
@@ -1654,6 +1698,13 @@ void OptimizationPanel::addObjectiveRow()
     row->deleteBtn->setFixedWidth(24);
     row->deleteBtn->setToolTip("Remove objective");
     layout->addWidget(row->deleteBtn);
+
+    // Install scroll guards on combo boxes and spinboxes
+    installScrollGuard(row->objectiveCombo);
+    installScrollGuard(row->targetModeCombo);
+    installScrollGuard(row->targetValueSpin);
+    installScrollGuard(row->reynoldsSpin);
+    installScrollGuard(row->weightSpin);
 
     // Connect signals
     connect(row->deleteBtn, &QPushButton::clicked,

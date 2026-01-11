@@ -87,6 +87,7 @@ signals:
 
 protected:
     void customEvent(QEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
     void onRun();
@@ -128,6 +129,9 @@ private:
     // Constraint rejection feedback
     void updateRejectionStats();
     PSOTaskFoil::ConstraintType mapParamIndexToConstraintType(int paramIndex, int opIndex) const;
+
+    // Prevent accidental value changes when scrolling the panel
+    void installScrollGuard(QWidget *widget);
 
     Foil *m_pFoil{nullptr};
     Polar *m_pPolar{nullptr};

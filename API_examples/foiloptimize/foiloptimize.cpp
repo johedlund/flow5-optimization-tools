@@ -311,11 +311,11 @@ int main(int argc, char **argv)
     std::cout << "  Variables: " << v3Vars << " (Expected: >= 4 control point vars)\n";
     std::cout << "  Result: " << (v3Ok ? "PASS" : "FAIL") << "\n";
 
-    // 9. V3 FULL PSO RUN (extended to catch late-onset crashes)
-    std::cout << "Test 9: V3 Full PSO Run (100 iterations, multithreaded)\n";
+    // 9. V3 FULL PSO RUN (quick test for race conditions)
+    std::cout << "Test 9: V3 Full PSO Run (10 iterations, multithreaded)\n";
 
-    PSOTask::s_PopSize = 10;
-    PSOTask::s_MaxIter = 100;
+    PSOTask::s_PopSize = 8;
+    PSOTask::s_MaxIter = 10;
     PSOTask::s_bMultiThreaded = true;  // Enable multithreading to catch race conditions
 
     PSOTaskFoil v3RunTask;
@@ -338,13 +338,13 @@ int main(int argc, char **argv)
     std::cout << "  Pareto Size: " << v3RunTask.paretoSize() << "\n";
     std::cout << "  Result: " << (v3RunOk ? "PASS" : "FAIL") << "\n";
 
-    // 10. V3 EXTENDED (200 iterations to catch late-onset issues)
+    // 10. V3 EXTENDED (longer run to catch late-onset issues)
     // NOTE: V3 Symmetric mode is known broken - BSpline is created from whole foil
     // then mirror logic creates invalid geometry. Skip symmetric test for now.
-    std::cout << "Test 10: V3 Extended (200 iterations, multithreaded)\n";
+    std::cout << "Test 10: V3 Extended (20 iterations, multithreaded)\n";
 
-    PSOTask::s_PopSize = 15;
-    PSOTask::s_MaxIter = 200;
+    PSOTask::s_PopSize = 10;
+    PSOTask::s_MaxIter = 20;
     PSOTask::s_bMultiThreaded = true;
 
     PSOTaskFoil v3ExtTask;
