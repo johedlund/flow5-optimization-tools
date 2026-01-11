@@ -21,7 +21,12 @@ fi
 export LD_LIBRARY_PATH="${root_dir}/fl5-lib:${root_dir}/XFoil-lib:${LD_LIBRARY_PATH:-}"
 export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
 
-# Optional: set FORCE_SW_RENDER=1 to avoid EGL/QRhi issues in WSL/VMs.
+# Auto-detect WSL2 (no GPU passthrough) and enable software rendering
+if [[ "${FORCE_SW_RENDER:-}" == "" ]] && grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; then
+  FORCE_SW_RENDER=1
+fi
+
+# Enable software rendering to avoid EGL/QRhi crashes in WSL/VMs
 if [[ "${FORCE_SW_RENDER:-0}" != "0" ]]; then
   export QT_OPENGL="${QT_OPENGL:-software}"
   export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"

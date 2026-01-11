@@ -24,6 +24,8 @@
 
 
 #include <cstdlib>
+#include <fstream>
+#include <string>
 
 // OpenBLAS thread control (declared here to avoid header conflicts)
 extern "C" void openblas_set_num_threads(int num_threads);
@@ -73,6 +75,46 @@ void customLogHandler(QtMsgType type, const QMessageLogContext& context, const Q
     }
 }
 
+
+/** Detect WSL2 environment by checking /proc/version for Microsoft kernel */
+bool isWSL2()
+{
+#ifdef Q_OS_LINUX
+    std::ifstream procVersion("/proc/version");
+    if (procVersion.is_open())
+    {
+        std::string line;
+        std::getline(procVersion, line);
+        // WSL2 kernel contains "microsoft" or "WSL"
+        if (line.find("microsoft") != std::string::npos ||
+            line.find("Microsoft") != std::string::npos ||
+            line.find("WSL") != std::string::npos)
+        {
+            return true;
+        }
+    }
+#endif
+    return false;
+}
+
+/** Enable software rendering for systems without proper GPU support (e.g., WSL2) */
+void enableSoftwareRenderingIfNeeded()
+{
+#ifdef Q_OS_LINUX
+    // Check if already set by user
+    if (getenv("LIBGL_ALWAYS_SOFTWARE") != nullptr)
+        return;
+
+    if (isWSL2())
+    {
+        // WSL2 without GPU passthrough causes EGL context creation failure
+        // Force XCB platform and software rendering to prevent segfault on startup
+        setenv("QT_QPA_PLATFORM", "xcb", 0);  // Force XCB instead of EGL
+        setenv("LIBGL_ALWAYS_SOFTWARE", "1", 0);
+        fprintf(stderr, "Info: WSL2 detected, enabling software rendering\n");
+    }
+#endif
+}
 
 /** OpenGL Default format must be set prior to app construction if Qt::AA_ShareOpenGLContexts is set */
 void setOGLDefaultFormat(int version)
@@ -134,6 +176,10 @@ void setOGLDefaultFormat(int version)
  */
 int main(int argc, char *argv[])
 {
+    // Enable software rendering for WSL2 and other systems without GPU support
+    // Must be called before any Qt initialization to prevent EGL context crash
+    enableSoftwareRenderingIfNeeded();
+
     // Prevent OpenBLAS parallel dgetrf segfault in spline solver (hmi.4)
     // Both env var (for early init) and runtime call (for already-loaded lib)
 #ifdef _WIN32
