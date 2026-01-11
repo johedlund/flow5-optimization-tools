@@ -160,36 +160,40 @@ No formal unit test framework. For new solver/optimization code:
 - Run headless tests before committing: `API_examples/foiloptimize/run_test.sh`
 - Run header lint for new files: `scripts/lint_headers.sh upstream/main`
 
-## V1 Foil Optimization: Lessons Learned (LE Geometry)
+## Lessons Learned
 
-**Problem**: V1 optimization creates bad leading edge (LE) geometry - loops, self-intersections, concave regions.
+**IMPORTANT**: Before modifying optimization code, read `docs/lessons-learned.md` for critical lessons on:
+- V1 LE geometry issues (split-spline failures, what works)
+- OpenBLAS threading crashes (always use `OPENBLAS_NUM_THREADS=1`)
+- XFoil non-convergence handling
 
-**Failed Approaches (DO NOT REPEAT):**
+**Quick Reference**:
+- Don't use split-spline approach for LE - it's fundamentally flawed
+- V3 has B-spline approach but crashes - debug it, don't reimplement in V1
+- Always validate foil geometry before XFoil calls
 
-1. **Split spline with CubicSpline (interpolating)** - LE loops
-   - Interpolating splines force curve through ALL points → oscillations
-   - Natural boundary conditions give no tangent control at LE
+## Custom Slash Commands
 
-2. **Phantom points near LE** - Still loops
-   - Adding phantom points 0.1% chord from LE caused spline oscillation
-   - Whether using + or - signs, the CubicSpline overshoots
+| Command | Description |
+|---------|-------------|
+| `/session-start` | Initialize session: git identity, sync, show issues |
+| `/build` | Quick rebuild (fl5-app only) |
+| `/build-test` | Full build + headless tests |
+| `/test` | Run headless optimization tests |
+| `/lint` | Run header lint checker |
+| `/debug` | Launch GDB for debugging |
+| `/analyze-crash` | Investigate crashes and segfaults |
+| `/commit-with-tests` | Run all checks, then commit |
+| `/ci-check` | Full CI checks before push |
 
-3. **Clamped boundary conditions on CubicSpline** - Still loops
-   - Added setClampedStart/End to specify tangent at LE
-   - Vertical tangent (0, -1) didn't prevent the loop
+## Custom Subagents
 
-4. **BSpline (approximating) for split spline** - Still loops
-   - Approximating splines with fewer control points still created LE issues
-   - V3 already had this approach and crashes
+Use these specialized agents for complex tasks:
 
-**Key Insight**: The split-spline approach is fundamentally flawed for this use case. Trying to join two separate splines at the LE always creates discontinuity issues.
+| Agent | Use For |
+|-------|---------|
+| `code-reviewer` | C++/Qt code review, memory/threading checks |
+| `debugger` | Crash analysis, segfaults, OpenBLAS issues |
+| `test-analyzer` | Test failure analysis and diagnosis |
 
-**What Actually Works (baseline from before split spline):**
-- Direct Y-offset modification: apply offsets directly to base nodes
-- Let Foil::initGeometry() handle the spline fitting (single continuous spline)
-- Accept that LE geometry may degrade but handle via:
-  - Geometry validation (isFoilGeometryValid) to reject bad particles
-  - Tighter bounds near LE (reduce how much points can move)
-  - m_LEBlendChord to blend optimized shape back toward original near LE
-
-**V3 Status**: Already has B-spline control point approach but crashes - needs debugging, not re-implementing in V1.
+Example: "Use the code-reviewer agent to review my changes"
