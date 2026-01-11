@@ -47,6 +47,7 @@ class FL5LIB_EXPORT BSpline : public Spline
         void splineDerivative(double u, double &dx, double &dy) const override;
 
         bool splineKnots();
+        void invalidateKnots() { m_knotsValid = false; }  // Call when control point count changes
         void copySymmetric(const BSpline &bspline);
         void fromInterpolation(int N, const Vector2d *pt);
 
@@ -61,5 +62,7 @@ class FL5LIB_EXPORT BSpline : public Spline
     private:
         std::vector<double> m_knot;            /**< the array of the values of the spline's knot */
         int m_degree;                   /**< the spline's degree */
+        bool m_knotsValid = false;             /**< true if knots are valid (skip rebuild in updateSpline) */
+        int m_lastCtrlCount = 0;               /**< control point count when knots were last built */
 };
 

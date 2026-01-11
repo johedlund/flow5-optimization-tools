@@ -1771,16 +1771,27 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     {
         double penalty = 0.0;
 
+        // Cache geometry properties to avoid repeated scans (each scan is O(nNodes))
+        const bool needThickness = m_Constraints.minThickness.enabled ||
+                                   m_Constraints.maxThickness.enabled ||
+                                   m_Constraints.minSectionModulus.enabled;
+        const bool needCamber = m_Constraints.minCamber.enabled || m_Constraints.maxCamber.enabled;
+        const bool needXCamber = m_Constraints.minXCamber.enabled || m_Constraints.maxXCamber.enabled;
+        const bool needXThickness = m_Constraints.minXThickness.enabled || m_Constraints.maxXThickness.enabled;
+
+        const double cachedThickness = needThickness ? workFoil.maxThickness() : 0.0;
+        const double cachedCamber = needCamber ? workFoil.maxCamber() : 0.0;
+        const double cachedXCamber = needXCamber ? workFoil.xCamber() : 0.0;
+        const double cachedXThickness = needXThickness ? workFoil.xThickness() : 0.0;
+
         if (m_Constraints.minThickness.enabled && m_Constraints.minThickness.value > 0.0) {
-            double t = workFoil.maxThickness();
-            if (t < m_Constraints.minThickness.value)
-                penalty += std::pow(m_Constraints.minThickness.value - t, 2) * 1000.0;
+            if (cachedThickness < m_Constraints.minThickness.value)
+                penalty += std::pow(m_Constraints.minThickness.value - cachedThickness, 2) * 1000.0;
         }
 
         if (m_Constraints.maxThickness.enabled && m_Constraints.maxThickness.value > 0.0 && m_Constraints.maxThickness.value < 1.0) {
-            double t = workFoil.maxThickness();
-            if (t > m_Constraints.maxThickness.value)
-                penalty += std::pow(t - m_Constraints.maxThickness.value, 2) * 1000.0;
+            if (cachedThickness > m_Constraints.maxThickness.value)
+                penalty += std::pow(cachedThickness - m_Constraints.maxThickness.value, 2) * 1000.0;
         }
 
         if (m_Constraints.minTEThickness.enabled && m_Constraints.minTEThickness.value > 0.0) {
@@ -1802,44 +1813,37 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         }
 
         if (m_Constraints.minSectionModulus.enabled && m_Constraints.minSectionModulus.value > 0.0) {
-            double t = workFoil.maxThickness();
-            double s = 0.12 * t * t; // approx S/c^3
+            double s = 0.12 * cachedThickness * cachedThickness; // approx S/c^3
             if (s < m_Constraints.minSectionModulus.value)
                 penalty += std::pow(m_Constraints.minSectionModulus.value - s, 2) * 100000.0;
         }
 
-        // New Geometric Constraints
+        // Geometric Constraints using cached values
         if (m_Constraints.minCamber.enabled) {
-            double c = workFoil.maxCamber();
-            if (c < m_Constraints.minCamber.value)
-                penalty += std::pow(m_Constraints.minCamber.value - c, 2) * 1000.0;
+            if (cachedCamber < m_Constraints.minCamber.value)
+                penalty += std::pow(m_Constraints.minCamber.value - cachedCamber, 2) * 1000.0;
         }
         if (m_Constraints.maxCamber.enabled) {
-            double c = workFoil.maxCamber();
-            if (c > m_Constraints.maxCamber.value)
-                penalty += std::pow(c - m_Constraints.maxCamber.value, 2) * 1000.0;
+            if (cachedCamber > m_Constraints.maxCamber.value)
+                penalty += std::pow(cachedCamber - m_Constraints.maxCamber.value, 2) * 1000.0;
         }
 
         if (m_Constraints.minXCamber.enabled) {
-            double xc = workFoil.xCamber();
-            if (xc < m_Constraints.minXCamber.value)
-                penalty += std::pow(m_Constraints.minXCamber.value - xc, 2) * 1000.0;
+            if (cachedXCamber < m_Constraints.minXCamber.value)
+                penalty += std::pow(m_Constraints.minXCamber.value - cachedXCamber, 2) * 1000.0;
         }
         if (m_Constraints.maxXCamber.enabled) {
-            double xc = workFoil.xCamber();
-            if (xc > m_Constraints.maxXCamber.value)
-                penalty += std::pow(xc - m_Constraints.maxXCamber.value, 2) * 1000.0;
+            if (cachedXCamber > m_Constraints.maxXCamber.value)
+                penalty += std::pow(cachedXCamber - m_Constraints.maxXCamber.value, 2) * 1000.0;
         }
 
         if (m_Constraints.minXThickness.enabled) {
-            double xt = workFoil.xThickness();
-            if (xt < m_Constraints.minXThickness.value)
-                penalty += std::pow(m_Constraints.minXThickness.value - xt, 2) * 1000.0;
+            if (cachedXThickness < m_Constraints.minXThickness.value)
+                penalty += std::pow(m_Constraints.minXThickness.value - cachedXThickness, 2) * 1000.0;
         }
         if (m_Constraints.maxXThickness.enabled) {
-            double xt = workFoil.xThickness();
-            if (xt > m_Constraints.maxXThickness.value)
-                penalty += std::pow(xt - m_Constraints.maxXThickness.value, 2) * 1000.0;
+            if (cachedXThickness > m_Constraints.maxXThickness.value)
+                penalty += std::pow(cachedXThickness - m_Constraints.maxXThickness.value, 2) * 1000.0;
         }
 
         if (m_Constraints.minArea.enabled) {

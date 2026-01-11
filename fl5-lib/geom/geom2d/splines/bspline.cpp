@@ -41,7 +41,9 @@ BSpline::BSpline() : Spline()
 
 void BSpline::makeCurve()
 {
-    if(int(m_Output.size())<=0) m_Output.resize(279);
+    // Default to 140 output points (reduced from 279 for performance)
+    // XFoil will re-mesh anyway, so high resolution not needed
+    if(int(m_Output.size())<=0) m_Output.resize(140);
 
     if (m_CtrlPt.size()>=2)
     {
@@ -125,6 +127,8 @@ bool BSpline::splineKnots()
     if(m_CtrlPt.size()<2)
     {
         m_knot.clear();
+        m_knotsValid = false;
+        m_lastCtrlCount = 0;
         return false;
     }
     int iDegree = std::min(m_degree, int(m_CtrlPt.size()));
@@ -147,6 +151,8 @@ bool BSpline::splineKnots()
             else m_knot[j] = 1.0; //+double(j-m_CtrlPt.size()-1.0)/1000.0;
         }
     }
+    m_knotsValid = true;
+    m_lastCtrlCount = int(m_CtrlPt.size());
     return true;
 }
 
@@ -155,13 +161,20 @@ void BSpline::resetSpline()
 {
     m_CtrlPt.clear();
     m_Weight.clear();
+    m_knotsValid = false;
+    m_lastCtrlCount = 0;
     splineKnots();
 }
 
 
 bool BSpline::updateSpline()
 {
-    m_bSingular = !splineKnots();
+    // Skip knot rebuild if knots are valid and control point count unchanged
+    // Knots only depend on degree and control point count, not control point values
+    if(!m_knotsValid || int(m_CtrlPt.size()) != m_lastCtrlCount)
+    {
+        m_bSingular = !splineKnots();
+    }
     return m_bSingular;
 }
 
@@ -170,6 +183,18 @@ void BSpline::duplicate(Spline const &spline)
 {
     Spline::duplicate(spline); //call base class FL5LIB_EXPORT method
     m_degree = spline.degree();
+    // Preserve knot cache state from source spline
+    const BSpline *pBS = dynamic_cast<const BSpline*>(&spline);
+    if(pBS)
+    {
+        m_knotsValid = pBS->m_knotsValid;
+        m_lastCtrlCount = pBS->m_lastCtrlCount;
+    }
+    else
+    {
+        m_knotsValid = false;
+        m_lastCtrlCount = 0;
+    }
 }
 
 
