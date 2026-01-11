@@ -264,20 +264,23 @@ bool computeLeMetrics(const Foil &foil, LeMetrics &metrics)
     return true;
 }
 
-bool isFoilGeometryValid(const Foil &foil,
-                         double baseLERadius,
-                         double baseMaxLECurv,
-                         double baseMaxLETurnAngle,
-                         bool baseHasMonotonicLE,
-                         bool baseHasPositiveThicknessLE,
-                         bool baseHasSelfIntersection)
+// Check foil geometry and report which constraint failed (for rejection tracking)
+PSOTaskFoil::ConstraintType checkFoilGeometryFailure(const Foil &foil,
+                                                      double baseLERadius,
+                                                      double baseMaxLECurv,
+                                                      double baseMaxLETurnAngle,
+                                                      bool baseHasMonotonicLE,
+                                                      bool baseHasPositiveThicknessLE,
+                                                      bool baseHasSelfIntersection)
 {
+    using CT = PSOTaskFoil::ConstraintType;
+
     if(foil.TEGap() < 0.0)
-        return false;
+        return CT::GeomTEGap;
 
     const std::vector<Node2d> &pts = foil.cubicSpline().outputPts();
     if(pts.size() < 4)
-        return true;
+        return CT::COUNT;  // Not a failure - just too few points
 
     double minX = pts.front().x;
     double maxX = pts.front().x;
@@ -288,23 +291,23 @@ bool isFoilGeometryValid(const Foil &foil,
     }
     const double chord = maxX - minX;
     if(chord <= 0.0)
-        return false;
+        return CT::GeomChord;
 
     const double eps = chord * 1.0e-4;
     if(baseHasMonotonicLE && !isMonotonicXAboutLE(pts, eps))
-        return false;
+        return CT::GeomMonotonicLE;
 
     if(!baseHasSelfIntersection && hasSelfIntersection(pts))
-        return false;
+        return CT::GeomSelfIntersection;
 
     if(baseHasPositiveThicknessLE && !hasPositiveThicknessNearLE(pts, minX, chord))
-        return false;
+        return CT::GeomPositiveThicknessLE;
 
     if(std::isfinite(baseLERadius) && baseLERadius > 0.0)
     {
         const double minRadius = std::max(baseLERadius * 0.25, chord * 1.0e-4);
         if(foil.LERadius() < minRadius)
-            return false;
+            return CT::GeomLERadius;
     }
 
     if(std::isfinite(baseMaxLECurv) && baseMaxLECurv > 0.0)
@@ -312,7 +315,7 @@ bool isFoilGeometryValid(const Foil &foil,
         const double leLimitX = minX + chord * 0.06;
         const double maxCurv = maxCurvatureNearLE(pts, leLimitX);
         if(maxCurv > baseMaxLECurv * 2.5)
-            return false;
+            return CT::GeomLECurvature;
     }
 
     if(std::isfinite(baseMaxLETurnAngle) && baseMaxLETurnAngle > 0.0)
@@ -321,10 +324,10 @@ bool isFoilGeometryValid(const Foil &foil,
         const double maxAngle = maxTurnAngleNearLE(pts, leLimitX);
         const double maxAllowed = std::max(baseMaxLETurnAngle * 1.6, baseMaxLETurnAngle + 0.4);
         if(maxAngle > maxAllowed)
-            return false;
+            return CT::GeomLETurnAngle;
     }
 
-    return true;
+    return CT::COUNT;  // No failure
 }
 
 // Calculate dCp/dx (pressure gradient) on the upper surface at a specific x/c position
@@ -1062,6 +1065,85 @@ void PSOTaskFoil::computeNormFactors()
     }
 }
 
+void PSOTaskFoil::resetRejectionCounts() const
+{
+    for(auto &count : m_RejectionCounts)
+        count.store(0, std::memory_order_relaxed);
+    m_TotalEvaluations.store(0, std::memory_order_relaxed);
+}
+
+int PSOTaskFoil::rejectionCount(ConstraintType type) const
+{
+    int idx = static_cast<int>(type);
+    if(idx >= 0 && idx < ConstraintTypeCount)
+        return m_RejectionCounts[idx].load(std::memory_order_relaxed);
+    return 0;
+}
+
+int PSOTaskFoil::totalEvaluations() const
+{
+    return m_TotalEvaluations.load(std::memory_order_relaxed);
+}
+
+std::array<int, PSOTaskFoil::ConstraintTypeCount> PSOTaskFoil::allRejectionCounts() const
+{
+    std::array<int, ConstraintTypeCount> result{};
+    for(int i = 0; i < ConstraintTypeCount; ++i)
+        result[i] = m_RejectionCounts[i].load(std::memory_order_relaxed);
+    return result;
+}
+
+void PSOTaskFoil::incrementRejection(ConstraintType type) const
+{
+    int idx = static_cast<int>(type);
+    if(idx >= 0 && idx < ConstraintTypeCount)
+        m_RejectionCounts[idx].fetch_add(1, std::memory_order_relaxed);
+}
+
+QString PSOTaskFoil::constraintTypeName(ConstraintType type)
+{
+    switch(type)
+    {
+        case ConstraintType::GeomTEGap:           return QStringLiteral("TE Gap");
+        case ConstraintType::GeomChord:           return QStringLiteral("Chord");
+        case ConstraintType::GeomMonotonicLE:     return QStringLiteral("LE Monotonic");
+        case ConstraintType::GeomSelfIntersection: return QStringLiteral("Self-Intersection");
+        case ConstraintType::GeomPositiveThicknessLE: return QStringLiteral("LE Thickness");
+        case ConstraintType::GeomLERadius:        return QStringLiteral("LE Radius");
+        case ConstraintType::GeomLECurvature:     return QStringLiteral("LE Curvature");
+        case ConstraintType::GeomLETurnAngle:     return QStringLiteral("LE Turn Angle");
+        case ConstraintType::MinThickness:        return QStringLiteral("Min Thickness");
+        case ConstraintType::MaxThickness:        return QStringLiteral("Max Thickness");
+        case ConstraintType::MinTEThickness:      return QStringLiteral("Min TE Thickness");
+        case ConstraintType::MinLERadius:         return QStringLiteral("Min LE Radius");
+        case ConstraintType::MaxWiggliness:       return QStringLiteral("Max Wiggliness");
+        case ConstraintType::MinSectionModulus:   return QStringLiteral("Min Section Modulus");
+        case ConstraintType::MinCamber:           return QStringLiteral("Min Camber");
+        case ConstraintType::MaxCamber:           return QStringLiteral("Max Camber");
+        case ConstraintType::MinXCamber:          return QStringLiteral("Min X-Camber");
+        case ConstraintType::MaxXCamber:          return QStringLiteral("Max X-Camber");
+        case ConstraintType::MinXThickness:       return QStringLiteral("Min X-Thickness");
+        case ConstraintType::MaxXThickness:       return QStringLiteral("Max X-Thickness");
+        case ConstraintType::MinArea:             return QStringLiteral("Min Area");
+        case ConstraintType::MinThickAt80:        return QStringLiteral("Min Thick @80%");
+        case ConstraintType::MinThickAt90:        return QStringLiteral("Min Thick @90%");
+        case ConstraintType::MinCl:               return QStringLiteral("Min Cl");
+        case ConstraintType::MaxCl:               return QStringLiteral("Max Cl");
+        case ConstraintType::MinCd:               return QStringLiteral("Min Cd");
+        case ConstraintType::MaxCd:               return QStringLiteral("Max Cd");
+        case ConstraintType::MinCm:               return QStringLiteral("Min Cm");
+        case ConstraintType::MaxCm:               return QStringLiteral("Max Cm");
+        case ConstraintType::MinLD:               return QStringLiteral("Min L/D");
+        case ConstraintType::MaxDCpDxAt10:        return QStringLiteral("Max dCp/dx @10%");
+        case ConstraintType::MaxDCpDxAt25:        return QStringLiteral("Max dCp/dx @25%");
+        case ConstraintType::MaxDCpDxAt50:        return QStringLiteral("Max dCp/dx @50%");
+        case ConstraintType::MaxDCpDxAt75:        return QStringLiteral("Max dCp/dx @75%");
+        case ConstraintType::XFoilFailed:         return QStringLiteral("XFoil Failed");
+        case ConstraintType::COUNT:               return QStringLiteral("Unknown");
+    }
+    return QStringLiteral("Unknown");
+}
+
 void PSOTaskFoil::initVariablesFromFoil(double yDelta)
 {
     m_Variable.clear();
@@ -1474,6 +1556,8 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     if(pParticle->dimension() != nVariables())
         return;
 
+    m_TotalEvaluations.fetch_add(1, std::memory_order_relaxed);
+
     Foil workFoil(m_pFoil);
 
     if(m_Preset == PresetType::V2_Camber_Thickness)
@@ -1758,18 +1842,24 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     if(!workFoil.initGeometry())
         return;
 
-    if(!isFoilGeometryValid(workFoil,
-                            m_BaseLERadius,
-                            m_BaseMaxLECurvature,
-                            m_BaseMaxLETurnAngle,
-                            m_BaseHasMonotonicLE,
-                            m_BaseHasPositiveThicknessLE,
-                            m_BaseHasSelfIntersection))
+    // Check geometry and track rejection type
+    ConstraintType geomFailure = checkFoilGeometryFailure(workFoil,
+                                                           m_BaseLERadius,
+                                                           m_BaseMaxLECurvature,
+                                                           m_BaseMaxLETurnAngle,
+                                                           m_BaseHasMonotonicLE,
+                                                           m_BaseHasPositiveThicknessLE,
+                                                           m_BaseHasSelfIntersection);
+    if(geomFailure != ConstraintType::COUNT)
+    {
+        incrementRejection(geomFailure);
         return;
+    }
 
     if (m_Constraints.enabled)
     {
         double penalty = 0.0;
+        bool hasViolation = false;  // Track if any constraint was violated
 
         // Cache geometry properties to avoid repeated scans (each scan is O(nNodes))
         const bool needThickness = m_Constraints.minThickness.enabled ||
@@ -1785,65 +1875,101 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         const double cachedXThickness = needXThickness ? workFoil.xThickness() : 0.0;
 
         if (m_Constraints.minThickness.enabled && m_Constraints.minThickness.value > 0.0) {
-            if (cachedThickness < m_Constraints.minThickness.value)
+            if (cachedThickness < m_Constraints.minThickness.value) {
                 penalty += std::pow(m_Constraints.minThickness.value - cachedThickness, 2) * 1000.0;
+                incrementRejection(ConstraintType::MinThickness);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.maxThickness.enabled && m_Constraints.maxThickness.value > 0.0 && m_Constraints.maxThickness.value < 1.0) {
-            if (cachedThickness > m_Constraints.maxThickness.value)
+            if (cachedThickness > m_Constraints.maxThickness.value) {
                 penalty += std::pow(cachedThickness - m_Constraints.maxThickness.value, 2) * 1000.0;
+                incrementRejection(ConstraintType::MaxThickness);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.minTEThickness.enabled && m_Constraints.minTEThickness.value > 0.0) {
             double te = workFoil.TEGap();
-            if (te < m_Constraints.minTEThickness.value)
+            if (te < m_Constraints.minTEThickness.value) {
                 penalty += std::pow(m_Constraints.minTEThickness.value - te, 2) * 5000.0;
+                incrementRejection(ConstraintType::MinTEThickness);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.minLERadius.enabled && m_Constraints.minLERadius.value > 0.0) {
             double r = workFoil.LERadius();
-            if (r < m_Constraints.minLERadius.value)
+            if (r < m_Constraints.minLERadius.value) {
                 penalty += std::pow(m_Constraints.minLERadius.value - r, 2) * 50000.0;
+                incrementRejection(ConstraintType::MinLERadius);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.maxWiggliness.enabled && m_Constraints.maxWiggliness.value > 0.0) {
             double w = workFoil.wiggliness();
-            if (w > m_Constraints.maxWiggliness.value)
+            if (w > m_Constraints.maxWiggliness.value) {
                 penalty += (w - m_Constraints.maxWiggliness.value) * 1.0;
+                incrementRejection(ConstraintType::MaxWiggliness);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.minSectionModulus.enabled && m_Constraints.minSectionModulus.value > 0.0) {
             double s = 0.12 * cachedThickness * cachedThickness; // approx S/c^3
-            if (s < m_Constraints.minSectionModulus.value)
+            if (s < m_Constraints.minSectionModulus.value) {
                 penalty += std::pow(m_Constraints.minSectionModulus.value - s, 2) * 100000.0;
+                incrementRejection(ConstraintType::MinSectionModulus);
+                hasViolation = true;
+            }
         }
 
         // Geometric Constraints using cached values
         if (m_Constraints.minCamber.enabled) {
-            if (cachedCamber < m_Constraints.minCamber.value)
+            if (cachedCamber < m_Constraints.minCamber.value) {
                 penalty += std::pow(m_Constraints.minCamber.value - cachedCamber, 2) * 1000.0;
+                incrementRejection(ConstraintType::MinCamber);
+                hasViolation = true;
+            }
         }
         if (m_Constraints.maxCamber.enabled) {
-            if (cachedCamber > m_Constraints.maxCamber.value)
+            if (cachedCamber > m_Constraints.maxCamber.value) {
                 penalty += std::pow(cachedCamber - m_Constraints.maxCamber.value, 2) * 1000.0;
+                incrementRejection(ConstraintType::MaxCamber);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.minXCamber.enabled) {
-            if (cachedXCamber < m_Constraints.minXCamber.value)
+            if (cachedXCamber < m_Constraints.minXCamber.value) {
                 penalty += std::pow(m_Constraints.minXCamber.value - cachedXCamber, 2) * 1000.0;
+                incrementRejection(ConstraintType::MinXCamber);
+                hasViolation = true;
+            }
         }
         if (m_Constraints.maxXCamber.enabled) {
-            if (cachedXCamber > m_Constraints.maxXCamber.value)
+            if (cachedXCamber > m_Constraints.maxXCamber.value) {
                 penalty += std::pow(cachedXCamber - m_Constraints.maxXCamber.value, 2) * 1000.0;
+                incrementRejection(ConstraintType::MaxXCamber);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.minXThickness.enabled) {
-            if (cachedXThickness < m_Constraints.minXThickness.value)
+            if (cachedXThickness < m_Constraints.minXThickness.value) {
                 penalty += std::pow(m_Constraints.minXThickness.value - cachedXThickness, 2) * 1000.0;
+                incrementRejection(ConstraintType::MinXThickness);
+                hasViolation = true;
+            }
         }
         if (m_Constraints.maxXThickness.enabled) {
-            if (cachedXThickness > m_Constraints.maxXThickness.value)
+            if (cachedXThickness > m_Constraints.maxXThickness.value) {
                 penalty += std::pow(cachedXThickness - m_Constraints.maxXThickness.value, 2) * 1000.0;
+                incrementRejection(ConstraintType::MaxXThickness);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.minArea.enabled) {
@@ -1856,27 +1982,37 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
             }
             area = std::fabs(0.5 * area); // Polygon area
 
-            if (area < m_Constraints.minArea.value)
+            if (area < m_Constraints.minArea.value) {
                 penalty += std::pow(m_Constraints.minArea.value - area, 2) * 10000.0;
+                incrementRejection(ConstraintType::MinArea);
+                hasViolation = true;
+            }
         }
 
         // Position-based thickness constraints (prevents flat trailing edges)
         if (m_Constraints.minThickAt80.enabled) {
             double t80 = workFoil.thickness(0.80);
-            if (t80 < m_Constraints.minThickAt80.value)
+            if (t80 < m_Constraints.minThickAt80.value) {
                 penalty += std::pow(m_Constraints.minThickAt80.value - t80, 2) * 5000.0;
+                incrementRejection(ConstraintType::MinThickAt80);
+                hasViolation = true;
+            }
         }
 
         if (m_Constraints.minThickAt90.enabled) {
             double t90 = workFoil.thickness(0.90);
-            if (t90 < m_Constraints.minThickAt90.value)
+            if (t90 < m_Constraints.minThickAt90.value) {
                 penalty += std::pow(m_Constraints.minThickAt90.value - t90, 2) * 5000.0;
+                incrementRejection(ConstraintType::MinThickAt90);
+                hasViolation = true;
+            }
         }
 
         if (penalty > 0.0) {
             // Apply penalty to all objectives
             for(int i=0; i<pParticle->nObjectives(); ++i)
                 pParticle->setFitness(i, OPTIM_PENALTY + penalty);
+            (void)hasViolation;  // Silence unused warning - violations already tracked
             return;
         }
     }
@@ -1969,7 +2105,12 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
     task->run();
 
     const std::vector<OpPoint*> &opps = task->operatingPoints();
-    if(!opps.empty() && !task->hasErrors())
+    if(opps.empty() || task->hasErrors())
+    {
+        incrementRejection(ConstraintType::XFoilFailed);
+        delete task;
+        return;
+    }
     {
         const OpPoint *pOpp = opps.front();
         const double cl = pOpp->m_Cl;
@@ -1984,46 +2125,68 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         double aeroPenalty = 0.0;
         if (m_Constraints.enabled)
         {
-            if (m_Constraints.minCl.enabled && cl < m_Constraints.minCl.value)
+            if (m_Constraints.minCl.enabled && cl < m_Constraints.minCl.value) {
                 aeroPenalty += std::pow(m_Constraints.minCl.value - cl, 2) * 1000.0;
-            if (m_Constraints.maxCl.enabled && cl > m_Constraints.maxCl.value)
+                incrementRejection(ConstraintType::MinCl);
+            }
+            if (m_Constraints.maxCl.enabled && cl > m_Constraints.maxCl.value) {
                 aeroPenalty += std::pow(cl - m_Constraints.maxCl.value, 2) * 1000.0;
+                incrementRejection(ConstraintType::MaxCl);
+            }
 
-            if (m_Constraints.minCd.enabled && cd < m_Constraints.minCd.value)
+            if (m_Constraints.minCd.enabled && cd < m_Constraints.minCd.value) {
                 aeroPenalty += std::pow(m_Constraints.minCd.value - cd, 2) * 10000.0;
-            if (m_Constraints.maxCd.enabled && cd > m_Constraints.maxCd.value)
+                incrementRejection(ConstraintType::MinCd);
+            }
+            if (m_Constraints.maxCd.enabled && cd > m_Constraints.maxCd.value) {
                 aeroPenalty += std::pow(cd - m_Constraints.maxCd.value, 2) * 10000.0;
+                incrementRejection(ConstraintType::MaxCd);
+            }
 
-            if (m_Constraints.minCm.enabled && cm < m_Constraints.minCm.value)
+            if (m_Constraints.minCm.enabled && cm < m_Constraints.minCm.value) {
                 aeroPenalty += std::pow(m_Constraints.minCm.value - cm, 2) * 1000.0;
-            if (m_Constraints.maxCm.enabled && cm > m_Constraints.maxCm.value)
+                incrementRejection(ConstraintType::MinCm);
+            }
+            if (m_Constraints.maxCm.enabled && cm > m_Constraints.maxCm.value) {
                 aeroPenalty += std::pow(cm - m_Constraints.maxCm.value, 2) * 1000.0;
+                incrementRejection(ConstraintType::MaxCm);
+            }
 
             double ld = (std::abs(cd) > 1.0e-9) ? cl/cd : 0.0;
-            if (m_Constraints.minLD.enabled && ld < m_Constraints.minLD.value)
+            if (m_Constraints.minLD.enabled && ld < m_Constraints.minLD.value) {
                 aeroPenalty += std::pow(m_Constraints.minLD.value - ld, 2) * 10.0;
+                incrementRejection(ConstraintType::MinLD);
+            }
 
             // Pressure gradient constraints (dCp/dx on upper surface)
             // Positive values indicate adverse pressure gradient (promotes separation)
             if (m_Constraints.maxDCpDxAt10.enabled) {
                 double dCpDx = upperSurfaceDCpDx(workFoil, *pOpp, 0.10);
-                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt10.value)
+                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt10.value) {
                     aeroPenalty += std::pow(dCpDx - m_Constraints.maxDCpDxAt10.value, 2) * 100.0;
+                    incrementRejection(ConstraintType::MaxDCpDxAt10);
+                }
             }
             if (m_Constraints.maxDCpDxAt25.enabled) {
                 double dCpDx = upperSurfaceDCpDx(workFoil, *pOpp, 0.25);
-                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt25.value)
+                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt25.value) {
                     aeroPenalty += std::pow(dCpDx - m_Constraints.maxDCpDxAt25.value, 2) * 100.0;
+                    incrementRejection(ConstraintType::MaxDCpDxAt25);
+                }
             }
             if (m_Constraints.maxDCpDxAt50.enabled) {
                 double dCpDx = upperSurfaceDCpDx(workFoil, *pOpp, 0.50);
-                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt50.value)
+                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt50.value) {
                     aeroPenalty += std::pow(dCpDx - m_Constraints.maxDCpDxAt50.value, 2) * 100.0;
+                    incrementRejection(ConstraintType::MaxDCpDxAt50);
+                }
             }
             if (m_Constraints.maxDCpDxAt75.enabled) {
                 double dCpDx = upperSurfaceDCpDx(workFoil, *pOpp, 0.75);
-                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt75.value)
+                if (std::isfinite(dCpDx) && dCpDx > m_Constraints.maxDCpDxAt75.value) {
                     aeroPenalty += std::pow(dCpDx - m_Constraints.maxDCpDxAt75.value, 2) * 100.0;
+                    incrementRejection(ConstraintType::MaxDCpDxAt75);
+                }
             }
         }
 

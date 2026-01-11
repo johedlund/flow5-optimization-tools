@@ -30,6 +30,9 @@
 #include <api/vector2d.h>
 #include <node2d.h>
 
+#include <atomic>
+#include <array>
+
 class Foil;
 class Polar;
 class PlaneXfl;
@@ -37,6 +40,53 @@ class PlaneXfl;
 class PSOTaskFoil : public PSOTask
 {
     public:
+        // Constraint types for rejection tracking
+        enum class ConstraintType
+        {
+            // Geometry validation (from isFoilGeometryValid)
+            GeomTEGap,
+            GeomChord,
+            GeomMonotonicLE,
+            GeomSelfIntersection,
+            GeomPositiveThicknessLE,
+            GeomLERadius,
+            GeomLECurvature,
+            GeomLETurnAngle,
+            // Geometric constraints
+            MinThickness,
+            MaxThickness,
+            MinTEThickness,
+            MinLERadius,
+            MaxWiggliness,
+            MinSectionModulus,
+            MinCamber,
+            MaxCamber,
+            MinXCamber,
+            MaxXCamber,
+            MinXThickness,
+            MaxXThickness,
+            MinArea,
+            MinThickAt80,
+            MinThickAt90,
+            // Aerodynamic constraints
+            MinCl,
+            MaxCl,
+            MinCd,
+            MaxCd,
+            MinCm,
+            MaxCm,
+            MinLD,
+            MaxDCpDxAt10,
+            MaxDCpDxAt25,
+            MaxDCpDxAt50,
+            MaxDCpDxAt75,
+            // XFoil convergence failure
+            XFoilFailed,
+            COUNT  // Must be last - total count of constraint types
+        };
+
+        static constexpr int ConstraintTypeCount = static_cast<int>(ConstraintType::COUNT);
+
         enum class OptimizationMode
         {
             ModeA,  // 2D only (fixed AoA)
@@ -188,7 +238,15 @@ class PSOTaskFoil : public PSOTask
         const ObjectiveSpec& objectiveSpec(int i) const {return m_ObjectiveSpecs.at(i);}
         void computeNormFactors();  // Evaluate baseline foil to normalize objectives
 
+        // Constraint rejection tracking API
+        void resetRejectionCounts() const;
+        int rejectionCount(ConstraintType type) const;
+        int totalEvaluations() const;
+        std::array<int, ConstraintTypeCount> allRejectionCounts() const;
+        static QString constraintTypeName(ConstraintType type);
+
     private:
+        void incrementRejection(ConstraintType type) const;
         void calcFitness(Particle *pParticle, bool bLong=false, bool bTrace=false) const override;
         bool resolveTarget(bool &useAlpha, double &value) const;
         double evaluateObjectiveSpec(const Foil &workFoil, const ObjectiveSpec &spec, bool &success) const;
@@ -257,4 +315,8 @@ class PSOTaskFoil : public PSOTask
         int m_BSplineCtrlPts{0};         // Number of control points
         int m_BSplineOutputPts{200};     // Output resolution
         int m_BSplineLECtrlIndex{0};     // Index of LE control point (fixed)
+
+        // Constraint rejection tracking (mutable for thread-safe updates from const calcFitness)
+        mutable std::array<std::atomic<int>, ConstraintTypeCount> m_RejectionCounts{};
+        mutable std::atomic<int> m_TotalEvaluations{0};
 };

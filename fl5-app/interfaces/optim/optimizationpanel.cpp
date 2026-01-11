@@ -48,6 +48,7 @@
 #include <QMessageBox>
 #include <QtConcurrent/QtConcurrent>
 #include <QCoreApplication>
+#include <QTimer>
 
 #include <api/foil.h>
 #include <api/polar.h>
@@ -486,6 +487,18 @@ void OptimizationPanel::setupUI()
     connect(m_AddConstraintBtn, &QPushButton::clicked, this, &OptimizationPanel::addConstraintRow);
     conMainLayout->addWidget(m_AddConstraintBtn);
 
+    // Rejection summary label (hidden until optimization runs)
+    m_RejectionSummaryLabel = new QLabel("", this);
+    m_RejectionSummaryLabel->setWordWrap(true);
+    m_RejectionSummaryLabel->setStyleSheet("color: #888; font-size: 11px;");
+    m_RejectionSummaryLabel->hide();
+    conMainLayout->addWidget(m_RejectionSummaryLabel);
+
+    // Timer for updating rejection stats during optimization
+    m_RejectionUpdateTimer = new QTimer(this);
+    m_RejectionUpdateTimer->setInterval(500);  // Update every 500ms
+    connect(m_RejectionUpdateTimer, &QTimer::timeout, this, &OptimizationPanel::updateRejectionStats);
+
     inspectorLayout->addWidget(constraintsGroup);
 
     inspectorLayout->addStretch();
@@ -727,6 +740,20 @@ void OptimizationPanel::onRun()
     m_OldIterLimit = XFoilTask::maxIterations();
     XFoilTask::setMaxIterations(30);
 
+    // Reset rejection counts and show constraint labels
+    m_pTask->resetRejectionCounts();
+    for(ConstraintRow *row : m_ConstraintRows)
+    {
+        if(row->rejectCountLabel)
+        {
+            row->rejectCountLabel->setText("");
+            row->rejectCountLabel->show();
+        }
+    }
+    if(m_RejectionSummaryLabel)
+        m_RejectionSummaryLabel->show();
+    m_RejectionUpdateTimer->start();
+
     // Batch run loop
     m_TotalRuns = m_sbBatchRuns->value();
     m_GlobalBestFitness = 1e12;
@@ -807,6 +834,11 @@ void OptimizationPanel::onTaskFinished()
 {
     m_RunActive = false;
     XFoilTask::setMaxIterations(m_OldIterLimit);
+
+    // Stop rejection update timer and show final stats
+    if(m_RejectionUpdateTimer)
+        m_RejectionUpdateTimer->stop();
+    updateRejectionStats();
 
     if(m_pTask && m_pTask->isFinished()) return;
     updateUI(false);
@@ -898,6 +930,10 @@ void OptimizationPanel::customEvent(QEvent *event)
             m_pGraphWt->update();
 
             updateCandidatePreview(pEvent->particle());
+
+            // Update rejection stats every few iterations to avoid excessive updates
+            if(pEvent->iter() % 5 == 0)
+                updateRejectionStats();
         }
     }
     else if(event->type() == OPTIM_END_EVENT)
@@ -1242,6 +1278,14 @@ void OptimizationPanel::addConstraintRow()
     row->deleteBtn->setToolTip("Remove constraint");
     layout->addWidget(row->deleteBtn);
 
+    // Rejection count label (hidden until optimization runs)
+    row->rejectCountLabel = new QLabel("", this);
+    row->rejectCountLabel->setFixedWidth(50);
+    row->rejectCountLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    row->rejectCountLabel->setStyleSheet("");  // Will be styled during optimization
+    row->rejectCountLabel->hide();  // Hidden until optimization runs
+    layout->addWidget(row->rejectCountLabel);
+
     // Connect signals
     connect(row->paramCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this, row](int) { onParamChanged(row); });
@@ -1418,6 +1462,136 @@ PSOTaskFoil::Constraints OptimizationPanel::buildConstraints() const
     }
 
     return c;
+}
+
+PSOTaskFoil::ConstraintType OptimizationPanel::mapParamIndexToConstraintType(int paramIndex, int opIndex) const
+{
+    using CT = PSOTaskFoil::ConstraintType;
+    bool isMin = (opIndex == 0);  // 0 = ≥ (min), 1 = ≤ (max)
+
+    switch(paramIndex)
+    {
+        case 0:  // Thickness
+            return isMin ? CT::MinThickness : CT::MaxThickness;
+        case 1:  // Camber
+            return isMin ? CT::MinCamber : CT::MaxCamber;
+        case 2:  // X Camber
+            return isMin ? CT::MinXCamber : CT::MaxXCamber;
+        case 3:  // X Thickness
+            return isMin ? CT::MinXThickness : CT::MaxXThickness;
+        case 4:  // LE Radius (only min makes sense)
+            return CT::MinLERadius;
+        case 5:  // TE Gap
+            return CT::MinTEThickness;
+        case 6:  // Wiggliness (only max makes sense)
+            return CT::MaxWiggliness;
+        case 7:  // Section Modulus
+            return CT::MinSectionModulus;
+        case 8:  // Area
+            return CT::MinArea;
+        case 9:  // Thick @80%
+            return CT::MinThickAt80;
+        case 10: // Thick @90%
+            return CT::MinThickAt90;
+        case 11: // Cl
+            return isMin ? CT::MinCl : CT::MaxCl;
+        case 12: // Cd
+            return isMin ? CT::MinCd : CT::MaxCd;
+        case 13: // Cm
+            return isMin ? CT::MinCm : CT::MaxCm;
+        case 14: // L/D
+            return CT::MinLD;
+        case 15: // dCp/dx @10%
+            return CT::MaxDCpDxAt10;
+        case 16: // dCp/dx @25%
+            return CT::MaxDCpDxAt25;
+        case 17: // dCp/dx @50%
+            return CT::MaxDCpDxAt50;
+        case 18: // dCp/dx @75%
+            return CT::MaxDCpDxAt75;
+        default:
+            return CT::COUNT;
+    }
+}
+
+void OptimizationPanel::updateRejectionStats()
+{
+    if(!m_pTask)
+        return;
+
+    int totalEval = m_pTask->totalEvaluations();
+    if(totalEval == 0)
+        return;
+
+    auto counts = m_pTask->allRejectionCounts();
+    int totalRejections = 0;
+    for(int c : counts)
+        totalRejections += c;
+
+    // Update per-constraint row labels
+    for(ConstraintRow *row : m_ConstraintRows)
+    {
+        if(!row->paramCombo || !row->opCombo || !row->rejectCountLabel)
+            continue;
+
+        int paramIndex = row->paramCombo->currentData().toInt();
+        int opIndex = row->opCombo->currentData().toInt();
+        auto constraintType = mapParamIndexToConstraintType(paramIndex, opIndex);
+
+        if(constraintType == PSOTaskFoil::ConstraintType::COUNT)
+            continue;
+
+        int count = m_pTask->rejectionCount(constraintType);
+        if(count > 0)
+        {
+            double pct = 100.0 * count / totalEval;
+            row->rejectCountLabel->setText(QString("%1").arg(count));
+
+            // Color intensity based on rejection percentage
+            // 0% = normal, 50%+ = bright red
+            int intensity = std::min(255, static_cast<int>(pct * 5.1));
+            row->rejectCountLabel->setStyleSheet(
+                QString("color: rgb(%1, 0, 0); font-weight: bold;").arg(intensity));
+        }
+        else
+        {
+            row->rejectCountLabel->setText("");
+            row->rejectCountLabel->setStyleSheet("");
+        }
+    }
+
+    // Update summary label
+    if(m_RejectionSummaryLabel)
+    {
+        // Find geometry failures
+        int geomFailures = 0;
+        for(int i = static_cast<int>(PSOTaskFoil::ConstraintType::GeomTEGap);
+            i <= static_cast<int>(PSOTaskFoil::ConstraintType::GeomLETurnAngle); ++i)
+        {
+            geomFailures += counts[i];
+        }
+
+        int xfoilFailed = counts[static_cast<int>(PSOTaskFoil::ConstraintType::XFoilFailed)];
+
+        QString summary;
+        if(totalRejections > 0)
+        {
+            double rejectPct = 100.0 * totalRejections / totalEval;
+            summary = QString("Rejections: %1/%2 (%3%)")
+                          .arg(totalRejections).arg(totalEval).arg(rejectPct, 0, 'f', 1);
+
+            if(geomFailures > 0)
+                summary += QString("\nGeometry: %1").arg(geomFailures);
+            if(xfoilFailed > 0)
+                summary += QString("\nXFoil fail: %1").arg(xfoilFailed);
+        }
+        else
+        {
+            summary = QString("Evaluations: %1").arg(totalEval);
+        }
+
+        m_RejectionSummaryLabel->setText(summary);
+    }
 }
 
 void OptimizationPanel::addObjectiveRow()

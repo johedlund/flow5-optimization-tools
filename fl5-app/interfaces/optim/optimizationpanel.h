@@ -58,6 +58,7 @@ struct ConstraintRow {
     QCheckBox *refCheck{nullptr};
     QDoubleSpinBox *valueSpin{nullptr};
     QPushButton *deleteBtn{nullptr};
+    QLabel *rejectCountLabel{nullptr};  // Shows rejection count during optimization
 };
 
 // Dynamic objective row widget (multi-point optimization)
@@ -124,6 +125,10 @@ private:
     // Optimization preview
     void updateOptimMarkersPreview();
 
+    // Constraint rejection feedback
+    void updateRejectionStats();
+    PSOTaskFoil::ConstraintType mapParamIndexToConstraintType(int paramIndex, int opIndex) const;
+
     Foil *m_pFoil{nullptr};
     Polar *m_pPolar{nullptr};
     QPointer<PSOTaskFoil> m_pTask;
@@ -183,6 +188,8 @@ private:
     QVBoxLayout *m_ConstraintListLayout{nullptr};
     QPushButton *m_AddConstraintBtn{nullptr};
     QList<ConstraintRow*> m_ConstraintRows;
+    QLabel *m_RejectionSummaryLabel{nullptr};  // Summary of constraint rejections
+    QTimer *m_RejectionUpdateTimer{nullptr};   // Timer to update rejection stats during optimization
 
     // Visualization
     GraphWt *m_pGraphWt;
