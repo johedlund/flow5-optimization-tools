@@ -30,6 +30,7 @@
 #include <iostream>
 #include <cassert>
 #include <thread>
+#include <mutex>
 
 #if defined ACCELERATE
   #include <Accelerate/Accelerate.h>
@@ -46,6 +47,11 @@
 
 
 #include <constants.h>
+
+
+// Mutex to protect LAPACK/BLAS calls from parallel access
+// OpenBLAS can crash when called concurrently even with OPENBLAS_NUM_THREADS=1
+static std::mutex s_lapackMutex;
 
 
 /** Inverts in place a 2x2 matrix */
@@ -1534,6 +1540,9 @@ bool matrix::solve4x4(double *M, double *rhs, int nrhs)
 
 int matrix::solveLinearSystem(int rank, float *M, int nrhs, float *rhs, int nThreads)
 {
+    // Serialize LAPACK calls to prevent OpenBLAS parallel crashes
+    std::lock_guard<std::mutex> lock(s_lapackMutex);
+
 #ifdef INTEL_MKL
     if(nThreads>0)
     {
@@ -1586,6 +1595,9 @@ int matrix::solveLinearSystem(int rank, float *M, int nrhs, float *rhs, int nThr
 
 int matrix::solveLinearSystem(int rank, double *M, int nrhs, double *rhs, int nThreads)
 {
+    // Serialize LAPACK calls to prevent OpenBLAS parallel crashes
+    std::lock_guard<std::mutex> lock(s_lapackMutex);
+
 #ifdef INTEL_MKL
     if(nThreads>0)
     {
