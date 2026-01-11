@@ -509,29 +509,38 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
         const std::vector<Node2d> &output = workBSpline.outputPts();
         if(output.size() < 10) { delete pNewFoil; return nullptr; }
 
+        // Find LE (minimum X) in output curve
+        int leIdx = 0;
+        double minX = output[0].x;
+        for(int i = 1; i < int(output.size()); ++i)
+        {
+            if(output[i].x < minX)
+            {
+                minX = output[i].x;
+                leIdx = i;
+            }
+        }
+
+        // Normalize: shift all X coordinates so LE is at x=0
+        // This prevents the foil from "detaching" when control points move
+        std::vector<Node2d> normalizedOutput(output.size());
+        for(int i = 0; i < int(output.size()); ++i)
+        {
+            normalizedOutput[i].x = output[i].x - minX;
+            normalizedOutput[i].y = output[i].y;
+        }
+
         // For symmetric mode, mirror at output curve level (not control points)
         if(m_bSymmetric)
         {
-            // Find LE index in output curve (minimum X)
-            int leIdx = 0;
-            double minX = output[0].x;
-            for(int i = 1; i < int(output.size()); ++i)
-            {
-                if(output[i].x < minX)
-                {
-                    minX = output[i].x;
-                    leIdx = i;
-                }
-            }
-
             // Build symmetric foil: upper surface mirrored to lower
             // Output is ordered: TE(upper) -> LE -> TE(lower)
             std::vector<Node2d> symPts;
-            symPts.reserve(output.size());
+            symPts.reserve(normalizedOutput.size());
 
             // Copy upper surface (0 to leIdx)
             for(int i = 0; i <= leIdx; ++i)
-                symPts.push_back(output[i]);
+                symPts.push_back(normalizedOutput[i]);
 
             // Set LE to y=0
             symPts[leIdx].y = 0.0;
@@ -548,7 +557,7 @@ Foil* PSOTaskFoil::createOptimizedFoil(const Particle &p) const
         }
         else
         {
-            pNewFoil->setBaseNodes(output);
+            pNewFoil->setBaseNodes(normalizedOutput);
         }
     }
     else // V1 - Split spline approach
@@ -1616,30 +1625,38 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         const std::vector<Node2d> &output = workBSpline.outputPts();
         if(output.size() < 10) return;
 
+        // Find LE (minimum X) in output curve
+        int leIdx = 0;
+        double minX = output[0].x;
+        for(int i = 1; i < int(output.size()); ++i)
+        {
+            if(output[i].x < minX)
+            {
+                minX = output[i].x;
+                leIdx = i;
+            }
+        }
+
+        // Normalize: shift all X coordinates so LE is at x=0
+        // This prevents the foil from "detaching" when control points move
+        std::vector<Node2d> normalizedOutput(output.size());
+        for(int i = 0; i < int(output.size()); ++i)
+        {
+            normalizedOutput[i].x = output[i].x - minX;
+            normalizedOutput[i].y = output[i].y;
+        }
+
         // For symmetric mode, mirror at output curve level (not control points)
         if(m_bSymmetric)
         {
-            // Find LE index in output curve (minimum X)
-            int leIdx = 0;
-            double minX = output[0].x;
-            for(int i = 1; i < int(output.size()); ++i)
-            {
-                if(output[i].x < minX)
-                {
-                    minX = output[i].x;
-                    leIdx = i;
-                }
-            }
-
             // Build symmetric foil: upper surface mirrored to lower
             // Output is ordered: TE(upper) -> LE -> TE(lower)
-            // Upper: indices 0 to leIdx, Lower: indices leIdx to end
             std::vector<Node2d> symPts;
-            symPts.reserve(output.size());
+            symPts.reserve(normalizedOutput.size());
 
             // Copy upper surface (0 to leIdx)
             for(int i = 0; i <= leIdx; ++i)
-                symPts.push_back(output[i]);
+                symPts.push_back(normalizedOutput[i]);
 
             // Set LE to y=0
             symPts[leIdx].y = 0.0;
@@ -1656,7 +1673,7 @@ void PSOTaskFoil::calcFitness(Particle *pParticle, bool bLong, bool bTrace) cons
         }
         else
         {
-            workFoil.setBaseNodes(output);
+            workFoil.setBaseNodes(normalizedOutput);
         }
     }
     else // V1 - Split spline approach
