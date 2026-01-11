@@ -183,15 +183,17 @@ void BSpline::duplicate(Spline const &spline)
 {
     Spline::duplicate(spline); //call base class FL5LIB_EXPORT method
     m_degree = spline.degree();
-    // Preserve knot cache state from source spline
+    // Copy knot vector and cache state from source BSpline
     const BSpline *pBS = dynamic_cast<const BSpline*>(&spline);
     if(pBS)
     {
+        m_knot = pBS->m_knot;  // Must copy the actual knot vector!
         m_knotsValid = pBS->m_knotsValid;
         m_lastCtrlCount = pBS->m_lastCtrlCount;
     }
     else
     {
+        m_knot.clear();
         m_knotsValid = false;
         m_lastCtrlCount = 0;
     }
