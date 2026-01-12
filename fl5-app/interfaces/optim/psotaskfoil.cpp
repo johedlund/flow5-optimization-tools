@@ -1280,10 +1280,9 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
         m_VarIsX.clear();
         m_Variable.reserve(nCtrl * 2);  // Reserve for possible X+Y variables
 
-        // Helper to check if control point is LE-adjacent
-        auto isLEAdjacent = [this](int i) {
-            const int distFromLE = std::abs(i - m_BSplineLECtrlIndex);
-            return distFromLE > 0 && distFromLE <= m_LEXPoints;
+        // Helper to check if control point is in X-movement range (same as V1)
+        auto allowsXMovement = [this](double xNorm) {
+            return xNorm >= m_XMoveMinChord && xNorm <= m_XMoveMaxChord;
         };
 
         if(m_bSymmetric)
@@ -1295,8 +1294,8 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
                 const double x = m_BaseBSpline.controlPoint(i).x;
                 const double y = m_BaseBSpline.controlPoint(i).y;
 
-                // Add X variable for LE-adjacent points
-                if(isLEAdjacent(i))
+                // Add X variable for points in configurable chord range
+                if(allowsXMovement(x))
                 {
                     m_Variable.emplace_back("cpx_" + std::to_string(i), x - xDelta, x + xDelta);
                     m_VarToBase.push_back(i);
@@ -1320,8 +1319,8 @@ void PSOTaskFoil::initVariablesFromFoil(double yDelta)
                 const double x = m_BaseBSpline.controlPoint(i).x;
                 const double y = m_BaseBSpline.controlPoint(i).y;
 
-                // Add X variable for LE-adjacent points
-                if(isLEAdjacent(i))
+                // Add X variable for points in configurable chord range
+                if(allowsXMovement(x))
                 {
                     m_Variable.emplace_back("cpx_" + std::to_string(i), x - xDelta, x + xDelta);
                     m_VarToBase.push_back(i);
