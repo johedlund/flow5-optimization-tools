@@ -103,25 +103,35 @@ win32-msvc {
 
     LIBS += -L../XFoil-lib -lXFoil1
 
-#----------------------- MKL  ---------------------
-    DEFINES += INTEL_MKL
-    INCLUDEPATH += "C:\Program Files (x86)\Intel\oneAPI\mkl\latest\include"
+#----------------------- Linear Algebra ---------------------
+    CI_OPENBLAS {
+        # CI build uses OpenBLAS (simpler setup)
+        DEFINES += OPENBLAS
+        INCLUDEPATH += $$(OPENBLAS_INCLUDE)
+        LIBS += -L$$(OPENBLAS_LIB) -lopenblas
+    } else {
+        # Local dev uses Intel MKL (default)
+        DEFINES += INTEL_MKL
+        INCLUDEPATH += "C:\Program Files (x86)\Intel\oneAPI\mkl\latest\include"
 
-    LIBS += -L"C:\Program Files (x86)\Intel\oneAPI\mkl\latest\bin"
-    LIBS += -L"C:\Program Files (x86)\Intel\oneAPI\mkl\latest\lib"
-    LIBS += -L"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin"
-    LIBS += -L"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib"
-    LIBS += -lmkl_intel_lp64_dll
-    LIBS += -lmkl_core_dll
-    LIBS += -lmkl_intel_thread_dll -llibiomp5md  # for multithreading
-    #    LIBS += -lmkl_sequential_dll
+        LIBS += -L"C:\Program Files (x86)\Intel\oneAPI\mkl\latest\bin"
+        LIBS += -L"C:\Program Files (x86)\Intel\oneAPI\mkl\latest\lib"
+        LIBS += -L"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin"
+        LIBS += -L"C:\Program Files (x86)\Intel\oneAPI\compiler\latest\lib"
+        LIBS += -lmkl_intel_lp64_dll
+        LIBS += -lmkl_core_dll
+        LIBS += -lmkl_intel_thread_dll -llibiomp5md  # for multithreading
+    }
 
 
 
 #------------ OPEN CASCADE --------------------------
-    INCLUDEPATH += D:\bin\OCCT-7_9_2\build\inc
-    LIBS += -LD:\bin\OCCT-7_9_2\build\win64\vc14\lib
-    LIBS += -LD:\bin\OCCT-7_9_2\build\win64\vc14\bin
+    # Support CI environment variable or local default path
+    OCCT_DIR = $$(OCCT_DIR)
+    isEmpty(OCCT_DIR): OCCT_DIR = "D:/bin/OCCT-7_9_2/build"
+    INCLUDEPATH += $${OCCT_DIR}/inc
+    LIBS += -L$${OCCT_DIR}/win64/vc14/lib
+    LIBS += -L$${OCCT_DIR}/win64/vc14/bin
 
 }
 

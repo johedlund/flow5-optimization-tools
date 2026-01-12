@@ -1,0 +1,232 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt version'
+        default: '6.6.2'
+        type: string
+      occt_version:
+        description: 'OpenCASCADE version'
+        default: '7.8.1'
+        type: string
+      gmsh_version:
+        description: 'GMSH version'
+        default: '4.13.1'
+        type: string
+
+env:
+  QT_VERSION: ${{ inputs.qt_version || '6.6.2' }}
+  OCCT_VERSION: ${{ inputs.occt_version || '7.8.1' }}
+  GMSH_VERSION: ${{ inputs.gmsh_version || '4.13.1' }}
+  OPENBLAS_VERSION: '0.3.26'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64
+
+    # Cache dependencies
+    - name: Cache Qt
+      id: cache-qt
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/Qt
+        key: qt-${{ env.QT_VERSION }}-windows-msvc2019
+
+    - name: Cache OpenCASCADE
+      id: cache-occt
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/occt
+        key: occt-${{ env.OCCT_VERSION }}-windows
+
+    - name: Cache GMSH
+      id: cache-gmsh
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/gmsh
+        key: gmsh-${{ env.GMSH_VERSION }}-windows
+
+    - name: Cache OpenBLAS
+      id: cache-openblas
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/openblas
+        key: openblas-${{ env.OPENBLAS_VERSION }}-windows
+
+    # Install Qt
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: ${{ env.QT_VERSION }}
+        host: windows
+        target: desktop
+        arch: win64_msvc2019_64
+        dir: ${{ github.workspace }}/Qt
+        cache: true
+
+    # Download OpenCASCADE
+    - name: Download OpenCASCADE
+      if: steps.cache-occt.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V${{ env.OCCT_VERSION }}/opencascade-${{ env.OCCT_VERSION }}-vc14-64.zip"
+        Write-Host "Downloading OCCT from: $occtUrl"
+        Invoke-WebRequest -Uri $occtUrl -OutFile occt.zip
+        Expand-Archive occt.zip -DestinationPath ${{ github.workspace }}/occt
+        Get-ChildItem -Path ${{ github.workspace }}/occt -Recurse -Directory | Select-Object -First 5
+
+    # Download GMSH SDK
+    - name: Download GMSH SDK
+      if: steps.cache-gmsh.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $gmshUrl = "https://gmsh.info/bin/Windows/gmsh-${{ env.GMSH_VERSION }}-Windows64-sdk.zip"
+        Write-Host "Downloading GMSH from: $gmshUrl"
+        Invoke-WebRequest -Uri $gmshUrl -OutFile gmsh.zip
+        Expand-Archive gmsh.zip -DestinationPath ${{ github.workspace }}/gmsh
+        Get-ChildItem -Path ${{ github.workspace }}/gmsh -Recurse -Directory | Select-Object -First 5
+
+    # Download OpenBLAS
+    - name: Download OpenBLAS
+      if: steps.cache-openblas.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $openblasUrl = "https://github.com/OpenMathLib/OpenBLAS/releases/download/v${{ env.OPENBLAS_VERSION }}/OpenBLAS-${{ env.OPENBLAS_VERSION }}-x64.zip"
+        Write-Host "Downloading OpenBLAS from: $openblasUrl"
+        Invoke-WebRequest -Uri $openblasUrl -OutFile openblas.zip
+        Expand-Archive openblas.zip -DestinationPath ${{ github.workspace }}/openblas
+        Get-ChildItem -Path ${{ github.workspace }}/openblas -Recurse | Select-Object -First 10
+
+    # Configure environment
+    - name: Configure environment
+      shell: pwsh
+      run: |
+        # Find Qt path
+        $qtPath = "${{ github.workspace }}/Qt/${{ env.QT_VERSION }}/msvc2019_64"
+        Write-Host "Qt path: $qtPath"
+
+        # Find OCCT path (extracted directory)
+        $occtPath = (Get-ChildItem -Path "${{ github.workspace }}/occt" -Directory | Select-Object -First 1).FullName
+        Write-Host "OCCT path: $occtPath"
+
+        # Find GMSH path
+        $gmshPath = (Get-ChildItem -Path "${{ github.workspace }}/gmsh" -Directory -Filter "gmsh*" | Select-Object -First 1).FullName
+        Write-Host "GMSH path: $gmshPath"
+
+        # OpenBLAS path
+        $openblasPath = "${{ github.workspace }}/openblas"
+        Write-Host "OpenBLAS path: $openblasPath"
+
+        # Set environment variables for qmake
+        echo "Qt6_DIR=$qtPath" >> $env:GITHUB_ENV
+        echo "OCCT_DIR=$occtPath" >> $env:GITHUB_ENV
+        echo "GMSH_DIR=$gmshPath" >> $env:GITHUB_ENV
+        echo "OPENBLAS_INCLUDE=$openblasPath/include" >> $env:GITHUB_ENV
+        echo "OPENBLAS_LIB=$openblasPath/lib" >> $env:GITHUB_ENV
+
+        # Add to PATH for runtime and build
+        echo "$qtPath/bin" >> $env:GITHUB_PATH
+        echo "$occtPath/win64/vc14/bin" >> $env:GITHUB_PATH
+        echo "$gmshPath/lib" >> $env:GITHUB_PATH
+        echo "$openblasPath/bin" >> $env:GITHUB_PATH
+
+    # Build XFoil-lib
+    - name: Build XFoil-lib
+      shell: cmd
+      run: |
+        cd XFoil-lib
+        "%Qt6_DIR%\bin\qmake6.exe" XFoil-lib.pro CONFIG+=release
+        nmake
+        dir *.dll *.lib 2>nul || echo "Check for output files"
+
+    # Build fl5-lib
+    - name: Build fl5-lib
+      shell: cmd
+      run: |
+        cd fl5-lib
+        "%Qt6_DIR%\bin\qmake6.exe" fl5-lib.pro CONFIG+=release CONFIG+=CI_OPENBLAS
+        nmake
+        dir *.dll *.lib 2>nul || echo "Check for output files"
+
+    # Build fl5-app
+    - name: Build fl5-app
+      shell: cmd
+      run: |
+        cd fl5-app
+        "%Qt6_DIR%\bin\qmake6.exe" fl5-app.pro CONFIG+=release CONFIG+=CI_OPENBLAS
+        nmake
+        dir *.exe 2>nul || echo "Check for output files"
+
+    # Package application
+    - name: Package application
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path deploy
+
+        # Copy main executable
+        Copy-Item fl5-app/flow5.exe deploy/
+
+        # Run windeployqt to gather Qt DLLs
+        & "$env:Qt6_DIR/bin/windeployqt.exe" --release --no-translations --no-system-d3d-compiler deploy/flow5.exe
+
+        # Copy OpenCASCADE DLLs
+        $occtBin = "$env:OCCT_DIR/win64/vc14/bin"
+        if (Test-Path $occtBin) {
+            Copy-Item "$occtBin/*.dll" deploy/ -ErrorAction SilentlyContinue
+            Write-Host "Copied OCCT DLLs from $occtBin"
+        }
+
+        # Copy GMSH DLL
+        $gmshLib = "$env:GMSH_DIR/lib"
+        if (Test-Path "$gmshLib/gmsh.dll") {
+            Copy-Item "$gmshLib/gmsh.dll" deploy/
+            Write-Host "Copied gmsh.dll"
+        }
+
+        # Copy OpenBLAS DLLs
+        $openblasDir = "${{ github.workspace }}/openblas"
+        if (Test-Path "$openblasDir/bin") {
+            Copy-Item "$openblasDir/bin/*.dll" deploy/ -ErrorAction SilentlyContinue
+            Write-Host "Copied OpenBLAS DLLs"
+        }
+
+        # Copy our custom libraries
+        if (Test-Path "XFoil-lib/XFoil1.dll") {
+            Copy-Item "XFoil-lib/XFoil1.dll" deploy/
+        }
+        if (Test-Path "fl5-lib/fl5-lib1.dll") {
+            Copy-Item "fl5-lib/fl5-lib1.dll" deploy/
+        }
+
+        # List deployed files
+        Write-Host "=== Deployed files ==="
+        Get-ChildItem deploy/ | Format-Table Name, Length
+
+    # Create ZIP
+    - name: Create ZIP
+      shell: pwsh
+      run: |
+        $version = "7.54"
+        $zipName = "flow5-$version-windows-x64.zip"
+        Compress-Archive -Path deploy/* -DestinationPath $zipName
+        Write-Host "Created: $zipName"
+        Get-Item $zipName | Format-Table Name, Length
+
+    # Upload artifact
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: flow5-windows-x64
+        path: flow5-*.zip
+        retention-days: 30
