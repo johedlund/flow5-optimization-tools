@@ -35,6 +35,8 @@ jobs:
         host: 'windows'
         target: 'desktop'
         arch: 'win64_msvc2019_64'
+        modules: 'qttools'
+        tools: 'tools_cmake'
         cache: true
 
     - name: Set QT_ROOT_DIR

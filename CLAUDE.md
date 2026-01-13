@@ -160,6 +160,10 @@ No formal unit test framework. For new solver/optimization code:
 - Run headless tests before committing: `API_examples/foiloptimize/run_test.sh`
 - Run header lint for new files: `scripts/lint_headers.sh upstream/main`
 
+## Quick Reference
+
+See `docs/cheatsheet.md` for a concise reference of commands, key files, and troubleshooting.
+
 ## Lessons Learned
 
 **IMPORTANT**: Before modifying optimization code, read `docs/lessons-learned.md` for critical lessons on:
