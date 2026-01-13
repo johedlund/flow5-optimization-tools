@@ -103,24 +103,8 @@ jobs:
         dir "%QT_ROOT_DIR%\bin\*.exe" 2>nul | findstr /i "exe" || echo No exe files found
         echo.
         echo === Checking Qt binaries ===
-        if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (
-          echo [OK] qmake6.exe found
-        ) else (
-          if exist "%QT_ROOT_DIR%\bin\qmake.exe" (
-            echo [OK] qmake.exe found (using qmake instead of qmake6)
-          ) else (
-            echo [FAIL] qmake not found at %QT_ROOT_DIR%\bin\
-            exit /b 1
-          )
-        )
-        if exist "%QT_ROOT_DIR%\bin\moc.exe" (
-          echo [OK] moc.exe found
-        ) else (
-          echo [FAIL] moc.exe not found at %QT_ROOT_DIR%\bin\
-          echo [DEBUG] Searching for moc.exe in Qt directory...
-          dir "%QT_ROOT_DIR%\..\..\" /s /b | findstr /i "moc.exe"
-          exit /b 1
-        )
+        if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (echo [OK] qmake6.exe found) else if exist "%QT_ROOT_DIR%\bin\qmake.exe" (echo [OK] qmake.exe found) else (echo [FAIL] qmake not found && exit /b 1)
+        if exist "%QT_ROOT_DIR%\bin\moc.exe" (echo [OK] moc.exe found) else (echo [FAIL] moc.exe not found && exit /b 1)
         echo.
         echo === Qt verification successful ===
 
@@ -229,14 +213,7 @@ jobs:
     - name: Determine qmake executable
       shell: cmd
       run: |
-        if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (
-          echo QMAKE_EXE=%QT_ROOT_DIR%\bin\qmake6.exe>> %GITHUB_ENV%
-        ) else if exist "%QT_ROOT_DIR%\bin\qmake.exe" (
-          echo QMAKE_EXE=%QT_ROOT_DIR%\bin\qmake.exe>> %GITHUB_ENV%
-        ) else (
-          echo ERROR: No qmake executable found
-          exit /b 1
-        )
+        if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (echo QMAKE_EXE=%QT_ROOT_DIR%\bin\qmake6.exe>> %GITHUB_ENV%) else if exist "%QT_ROOT_DIR%\bin\qmake.exe" (echo QMAKE_EXE=%QT_ROOT_DIR%\bin\qmake.exe>> %GITHUB_ENV%) else (echo ERROR: No qmake executable found && exit /b 1)
 
     - name: Build XFoil-lib
       shell: cmd
