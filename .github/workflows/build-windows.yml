@@ -113,9 +113,13 @@ jobs:
     - name: Configure environment
       shell: pwsh
       run: |
-        # Find Qt path
-        $qtPath = "${{ github.workspace }}/Qt/${{ env.QT_VERSION }}/msvc2019_64"
+        # Find Qt path (install-qt-action creates dir/Qt/version/arch structure)
+        $qtPath = "${{ github.workspace }}/Qt/Qt/${{ env.QT_VERSION }}/msvc2019_64"
         Write-Host "Qt path: $qtPath"
+        if (-not (Test-Path $qtPath)) {
+            Write-Host "WARNING: Qt path not found, listing Qt directory:"
+            Get-ChildItem -Path "${{ github.workspace }}/Qt" -Recurse -Directory -Depth 3 | ForEach-Object { Write-Host $_.FullName }
+        }
 
         # Find OCCT path (extracted directory)
         $occtPath = (Get-ChildItem -Path "${{ github.workspace }}/occt" -Directory | Select-Object -First 1).FullName
