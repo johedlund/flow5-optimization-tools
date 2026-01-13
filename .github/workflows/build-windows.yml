@@ -35,9 +35,8 @@ jobs:
         host: 'windows'
         target: 'desktop'
         arch: 'win64_msvc2019_64'
-        modules: 'qttools'
-        tools: 'tools_cmake'
         cache: true
+        # Note: Qt 6 base installation includes moc, uic, rcc, qmake by default
 
     - name: Set QT_ROOT_DIR
       shell: pwsh
@@ -100,17 +99,26 @@ jobs:
         echo Qt6_DIR=%Qt6_DIR%
         echo QT_ROOT_DIR=%QT_ROOT_DIR%
         echo.
+        echo === Contents of QT_ROOT_DIR\bin ===
+        dir "%QT_ROOT_DIR%\bin\*.exe" 2>nul | findstr /i "exe" || echo No exe files found
+        echo.
         echo === Checking Qt binaries ===
         if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (
           echo [OK] qmake6.exe found
         ) else (
-          echo [FAIL] qmake6.exe not found at %QT_ROOT_DIR%\bin\
-          exit /b 1
+          if exist "%QT_ROOT_DIR%\bin\qmake.exe" (
+            echo [OK] qmake.exe found (using qmake instead of qmake6)
+          ) else (
+            echo [FAIL] qmake not found at %QT_ROOT_DIR%\bin\
+            exit /b 1
+          )
         )
         if exist "%QT_ROOT_DIR%\bin\moc.exe" (
           echo [OK] moc.exe found
         ) else (
           echo [FAIL] moc.exe not found at %QT_ROOT_DIR%\bin\
+          echo [DEBUG] Searching for moc.exe in Qt directory...
+          dir "%QT_ROOT_DIR%\..\..\" /s /b | findstr /i "moc.exe"
           exit /b 1
         )
         echo.
@@ -218,11 +226,23 @@ jobs:
 
         echo === All dependencies verified ===
 
+    - name: Determine qmake executable
+      shell: cmd
+      run: |
+        if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (
+          echo QMAKE_EXE=%QT_ROOT_DIR%\bin\qmake6.exe>> %GITHUB_ENV%
+        ) else if exist "%QT_ROOT_DIR%\bin\qmake.exe" (
+          echo QMAKE_EXE=%QT_ROOT_DIR%\bin\qmake.exe>> %GITHUB_ENV%
+        ) else (
+          echo ERROR: No qmake executable found
+          exit /b 1
+        )
+
     - name: Build XFoil-lib
       shell: cmd
       run: |
         cd XFoil-lib
-        "%QT_ROOT_DIR%\bin\qmake6.exe" XFoil-lib.pro CONFIG+=release
+        "%QMAKE_EXE%" XFoil-lib.pro CONFIG+=release
         nmake
         if exist XFoil1.dll (echo SUCCESS: XFoil1.dll) else (exit /b 1)
 
@@ -230,7 +250,7 @@ jobs:
       shell: cmd
       run: |
         cd fl5-lib
-        "%QT_ROOT_DIR%\bin\qmake6.exe" fl5-lib.pro CONFIG+=release CONFIG+=CI_OPENBLAS
+        "%QMAKE_EXE%" fl5-lib.pro CONFIG+=release CONFIG+=CI_OPENBLAS
         nmake
         if exist fl5-lib1.dll (echo SUCCESS: fl5-lib1.dll) else (exit /b 1)
 
@@ -238,7 +258,7 @@ jobs:
       shell: cmd
       run: |
         cd fl5-app
-        "%QT_ROOT_DIR%\bin\qmake6.exe" fl5-app.pro CONFIG+=release CONFIG+=CI_OPENBLAS
+        "%QMAKE_EXE%" fl5-app.pro CONFIG+=release CONFIG+=CI_OPENBLAS
         nmake
         if exist flow5.exe (echo SUCCESS: flow5.exe) else (exit /b 1)
 
