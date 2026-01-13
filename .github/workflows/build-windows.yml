@@ -51,7 +51,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ${{ github.workspace }}/deps/occt
-        key: occt-${{ env.OCCT_VERSION }}-windows-v2
+        key: occt-${{ env.OCCT_VERSION }}-windows-combined-v3
 
     - name: Cache GMSH
       id: cache-gmsh
@@ -73,13 +73,14 @@ jobs:
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/deps/occt"
-        $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V${{ env.OCCT_VERSION }}/opencascade-release-no-pch.zip"
+        # Use the combined package which includes all dependencies
+        $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V${{ env.OCCT_VERSION }}/occt-combined-release-no-pch.zip"
         Write-Host "Downloading OCCT from: $occtUrl"
         Invoke-WebRequest -Uri $occtUrl -OutFile occt.zip -UseBasicParsing
         Expand-Archive occt.zip -DestinationPath "${{ github.workspace }}/deps/occt" -Force
         Remove-Item occt.zip
-        Write-Host "=== OCCT extracted contents ==="
-        Get-ChildItem -Path "${{ github.workspace }}/deps/occt" -Recurse -Depth 2 | ForEach-Object { Write-Host $_.FullName }
+        Write-Host "=== OCCT extracted contents (showing structure) ==="
+        Get-ChildItem -Path "${{ github.workspace }}/deps/occt" -Recurse -Depth 3 | ForEach-Object { Write-Host $_.FullName }
 
     # Download GMSH SDK
     - name: Download GMSH SDK
