@@ -146,13 +146,13 @@ jobs:
         $gmshPath = (Get-ChildItem -Path "${{ github.workspace }}\gmsh" -Directory -Filter "gmsh*" | Select-Object -First 1).FullName
         Write-Host "`nGMSH_DIR: $gmshPath"
 
-        # Set environment variables for qmake (use backslashes for Windows)
+        # Set environment variables for qmake (use Add-Content to avoid BOM issues)
         Write-Host "`n=== Setting environment variables ==="
-        "Qt6_DIR=$qtPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "OCCT_DIR=$occtPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "GMSH_DIR=$gmshPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "OPENBLAS_INCLUDE=$openblasPath\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "OPENBLAS_LIB=$openblasPath\lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        Add-Content $env:GITHUB_ENV "Qt6_DIR=$qtPath"
+        Add-Content $env:GITHUB_ENV "OCCT_DIR=$occtPath"
+        Add-Content $env:GITHUB_ENV "GMSH_DIR=$gmshPath"
+        Add-Content $env:GITHUB_ENV "OPENBLAS_INCLUDE=$openblasPath\include"
+        Add-Content $env:GITHUB_ENV "OPENBLAS_LIB=$openblasPath\lib"
 
         Write-Host "Qt6_DIR=$qtPath"
         Write-Host "OCCT_DIR=$occtPath"
@@ -161,10 +161,10 @@ jobs:
         Write-Host "OPENBLAS_LIB=$openblasPath\lib"
 
         # Add to PATH for runtime
-        "$qtPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        "$occtPath\win64\vc14\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        "$gmshPath\lib" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        "$openblasPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        Add-Content $env:GITHUB_PATH "$qtPath\bin"
+        Add-Content $env:GITHUB_PATH "$occtPath\win64\vc14\bin"
+        Add-Content $env:GITHUB_PATH "$gmshPath\lib"
+        Add-Content $env:GITHUB_PATH "$openblasPath\bin"
 
     # Verify environment before build
     - name: Verify environment
