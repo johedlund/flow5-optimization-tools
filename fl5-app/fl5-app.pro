@@ -109,12 +109,6 @@ linux-g++ {
 
 win32-msvc {
 
-    # CI builds: prevent automatic Windows SDK paths from being added to moc
-    # These paths contain spaces and can cause command-line issues
-    CI_OPENBLAS {
-        QMAKE_INCDIR_POST =
-    }
-
     CONFIG += console
     CONFIG -= debug_and_release debug_and_release_target
 
