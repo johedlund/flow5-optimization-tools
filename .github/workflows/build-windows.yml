@@ -37,6 +37,29 @@ jobs:
         arch: 'win64_msvc2019_64'
         cache: true
 
+    - name: Set QT_ROOT_DIR
+      shell: pwsh
+      run: |
+        # Prefer the action-provided variables
+        if ($env:Qt6_DIR -and (Test-Path $env:Qt6_DIR)) {
+          $qt = $env:Qt6_DIR
+        } elseif ($env:Qt5_DIR -and (Test-Path $env:Qt5_DIR)) {
+          $qt = $env:Qt5_DIR
+        } else {
+          # Fallback: search for msvc install
+          $qt = (Get-ChildItem "$env:GITHUB_WORKSPACE\Qt" -Directory -Recurse -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Name -match 'msvc' } |
+                 Select-Object -First 1).FullName
+        }
+
+        if (-not $qt) {
+          Write-Error "Could not determine Qt installation directory"
+          exit 1
+        }
+
+        Write-Host "Detected QT_ROOT_DIR = $qt"
+        Add-Content $env:GITHUB_ENV "QT_ROOT_DIR=$qt"
+
     - name: Verify Qt
       shell: cmd
       run: |
