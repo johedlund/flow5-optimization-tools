@@ -35,60 +35,152 @@ jobs:
         host: 'windows'
         target: 'desktop'
         arch: 'win64_msvc2019_64'
-        cache: true
+        cache: false  # Disable cache to ensure clean download (re-enable after fix confirmed)
         # Note: Qt 6 base installation includes moc, uic, rcc, qmake by default
+
+    - name: Debug Qt installation structure
+      shell: pwsh
+      run: |
+        Write-Host "=== Dumping Qt installation structure ==="
+        Write-Host "RUNNER_WORKSPACE: $env:RUNNER_WORKSPACE"
+        Write-Host ""
+
+        # Check expected Qt location
+        $qtRoot = "$env:RUNNER_WORKSPACE\Qt"
+        if (Test-Path $qtRoot) {
+          Write-Host "Contents of $qtRoot (depth 5):"
+          Get-ChildItem $qtRoot -Recurse -Depth 5 -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSIsContainer -or $_.Name -match '\.(exe|dll)$' } |
+            ForEach-Object {
+              $indent = "  " * ($_.FullName.Split('\').Count - $qtRoot.Split('\').Count)
+              Write-Host "$indent$($_.Name)"
+            }
+        } else {
+          Write-Host "WARNING: $qtRoot does not exist!"
+          Write-Host ""
+          Write-Host "Checking D:\a for Qt installations:"
+          Get-ChildItem "D:\a" -Recurse -Depth 5 -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'qt|Qt' } |
+            ForEach-Object { Write-Host "  $($_.FullName)" }
+        }
+
+        Write-Host ""
+        Write-Host "=== Environment variables set by Qt action ==="
+        Get-ChildItem env: | Where-Object { $_.Name -match 'qt|Qt' } |
+          ForEach-Object { Write-Host "$($_.Name) = $($_.Value)" }
 
     - name: Set QT_ROOT_DIR
       shell: pwsh
       run: |
-        # Debug: Show what variables are set
-        Write-Host "Qt6_DIR from action: $env:Qt6_DIR"
-        Write-Host "Qt5_DIR from action: $env:Qt5_DIR"
-        Write-Host "IQTA_TOOLS from action: $env:IQTA_TOOLS"
+        # Debug: Show what variables are set by install-qt-action
+        Write-Host "=== Variables from install-qt-action ==="
+        Write-Host "Qt6_DIR: $env:Qt6_DIR"
+        Write-Host "Qt5_DIR: $env:Qt5_DIR"
+        Write-Host "IQTA_TOOLS: $env:IQTA_TOOLS"
+        Write-Host "QT_ROOT_DIR (if set): $env:QT_ROOT_DIR"
+        Write-Host ""
 
-        # The install-qt-action sets Qt6_DIR to the root Qt installation
-        # It should be something like: D:\a\<repo>\Qt\6.6.2\msvc2019_64
+        # Helper function to verify Qt directory has essential tools
+        function Test-QtDir($path) {
+          if (-not $path) { return $false }
+          $hasQmake = (Test-Path "$path\bin\qmake6.exe") -or (Test-Path "$path\bin\qmake.exe")
+          $hasMoc = Test-Path "$path\bin\moc.exe"
+          if ($hasQmake -and $hasMoc) {
+            Write-Host "  Valid Qt at: $path (qmake=$hasQmake, moc=$hasMoc)"
+            return $true
+          }
+          if ($hasQmake -or $hasMoc) {
+            Write-Host "  Partial Qt at: $path (qmake=$hasQmake, moc=$hasMoc)"
+          }
+          return $false
+        }
+
         $qt = $null
 
+        # Method 1: Try Qt6_DIR directly
         if ($env:Qt6_DIR) {
-          # Qt6_DIR might point to cmake dir, extract root if needed
+          Write-Host "Checking Qt6_DIR..."
           $testPath = $env:Qt6_DIR
-          if (Test-Path "$testPath\bin\qmake6.exe") {
+          if (Test-QtDir $testPath) {
             $qt = $testPath
           } elseif ($testPath -match '(.*)\\lib\\cmake\\Qt6') {
             # Extract root from cmake path
-            $qt = $matches[1]
+            $extracted = $matches[1]
+            Write-Host "  Extracted from cmake path: $extracted"
+            if (Test-QtDir $extracted) {
+              $qt = $extracted
+            }
           }
         }
 
+        # Method 2: Try Qt5_DIR (some versions of the action use this)
         if (-not $qt -and $env:Qt5_DIR) {
-          $testPath = $env:Qt5_DIR
-          if (Test-Path "$testPath\bin\qmake6.exe") {
-            $qt = $testPath
+          Write-Host "Checking Qt5_DIR..."
+          if (Test-QtDir $env:Qt5_DIR) {
+            $qt = $env:Qt5_DIR
           }
         }
 
+        # Method 3: Search in RUNNER_WORKSPACE/Qt
         if (-not $qt) {
-          # Fallback: search in runner.workspace/Qt
-          Write-Host "Searching for Qt in workspace..."
+          Write-Host "Searching in RUNNER_WORKSPACE/Qt..."
           $qtRoot = "$env:RUNNER_WORKSPACE\Qt"
           if (Test-Path $qtRoot) {
-            $qt = (Get-ChildItem $qtRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-                   Where-Object { $_.Name -match 'msvc.*64$' -and (Test-Path "$($_.FullName)\bin\qmake6.exe") } |
-                   Select-Object -First 1).FullName
+            Write-Host "  Searching in: $qtRoot"
+            Get-ChildItem $qtRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "    Found: $($_.FullName)"
+            }
+            $candidates = Get-ChildItem $qtRoot -Directory -Recurse -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Name -match 'msvc.*64$' }
+            foreach ($c in $candidates) {
+              Write-Host "  Candidate: $($c.FullName)"
+              if (Test-QtDir $c.FullName) {
+                $qt = $c.FullName
+                break
+              }
+            }
+          }
+        }
+
+        # Method 4: Search common install locations
+        if (-not $qt) {
+          Write-Host "Searching common locations..."
+          $locations = @(
+            "C:\Qt\$env:QT_VERSION\msvc2019_64",
+            "D:\a\Qt\$env:QT_VERSION\msvc2019_64",
+            "$env:RUNNER_WORKSPACE\Qt\$env:QT_VERSION\msvc2019_64"
+          )
+          foreach ($loc in $locations) {
+            if (Test-QtDir $loc) {
+              $qt = $loc
+              break
+            }
           }
         }
 
         if (-not $qt) {
-          Write-Error "Could not determine Qt installation directory"
-          Write-Host "Available directories in runner workspace:"
-          Get-ChildItem $env:RUNNER_WORKSPACE -Recurse -Depth 3 -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match 'qt|msvc' } |
-            ForEach-Object { Write-Host "  $($_.FullName)" }
+          Write-Error "Could not find valid Qt installation with both qmake and moc"
+          Write-Host ""
+          Write-Host "=== Directory listing for debugging ==="
+          Write-Host "RUNNER_WORKSPACE: $env:RUNNER_WORKSPACE"
+          if (Test-Path "$env:RUNNER_WORKSPACE\Qt") {
+            Write-Host "Contents of $env:RUNNER_WORKSPACE\Qt:"
+            Get-ChildItem "$env:RUNNER_WORKSPACE\Qt" -Recurse -Depth 4 -ErrorAction SilentlyContinue |
+              ForEach-Object { Write-Host "  $($_.FullName)" }
+          } else {
+            Write-Host "Qt directory does not exist in RUNNER_WORKSPACE"
+          }
           exit 1
         }
 
-        Write-Host "Detected QT_ROOT_DIR = $qt"
+        Write-Host ""
+        Write-Host "=== Selected QT_ROOT_DIR = $qt ==="
+
+        # Verify bin contents
+        Write-Host "Contents of $qt\bin:"
+        Get-ChildItem "$qt\bin" -Filter "*.exe" -ErrorAction SilentlyContinue |
+          Select-Object Name | ForEach-Object { Write-Host "  $($_.Name)" }
+
         "QT_ROOT_DIR=$qt" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Verify Qt
@@ -99,12 +191,14 @@ jobs:
         echo Qt6_DIR=%Qt6_DIR%
         echo QT_ROOT_DIR=%QT_ROOT_DIR%
         echo.
-        echo === Contents of QT_ROOT_DIR\bin ===
-        dir "%QT_ROOT_DIR%\bin\*.exe" 2>nul | findstr /i "exe" || echo No exe files found
+        echo === All exe files in QT_ROOT_DIR\bin ===
+        dir "%QT_ROOT_DIR%\bin\*.exe" /b 2>nul || echo No exe files found
         echo.
-        echo === Checking Qt binaries ===
+        echo === Checking essential Qt binaries ===
         if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (echo [OK] qmake6.exe found) else if exist "%QT_ROOT_DIR%\bin\qmake.exe" (echo [OK] qmake.exe found) else (echo [FAIL] qmake not found && exit /b 1)
         if exist "%QT_ROOT_DIR%\bin\moc.exe" (echo [OK] moc.exe found) else (echo [FAIL] moc.exe not found && exit /b 1)
+        if exist "%QT_ROOT_DIR%\bin\uic.exe" (echo [OK] uic.exe found) else (echo [WARN] uic.exe not found)
+        if exist "%QT_ROOT_DIR%\bin\rcc.exe" (echo [OK] rcc.exe found) else (echo [WARN] rcc.exe not found)
         echo.
         echo === Qt verification successful ===
 
