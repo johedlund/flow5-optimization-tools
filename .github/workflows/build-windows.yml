@@ -35,15 +35,46 @@ jobs:
       with:
         arch: amd64
 
-    # Install Qt using the action (has built-in caching)
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v4
+    # Cache Qt
+    - name: Cache Qt
+      id: cache-qt
+      uses: actions/cache@v4
       with:
-        version: ${{ env.QT_VERSION }}
-        host: windows
-        target: desktop
-        arch: win64_msvc2019_64
-        cache: true
+        path: ${{ github.workspace }}/Qt
+        key: qt-${{ env.QT_VERSION }}-windows-msvc2019-v2
+
+    # Install Qt using aqtinstall directly for full control
+    - name: Install Qt
+      if: steps.cache-qt.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        pip install aqtinstall
+        # Install Qt with all needed modules
+        python -m aqt install-qt windows desktop ${{ env.QT_VERSION }} win64_msvc2019_64 --outputdir "${{ github.workspace }}/Qt"
+        Write-Host "=== Qt installation contents ==="
+        Get-ChildItem "${{ github.workspace }}/Qt" -Recurse -Depth 3 -Filter "*.exe" | Select-Object FullName | Select-Object -First 20
+
+    # Set Qt environment
+    - name: Set Qt environment
+      shell: pwsh
+      run: |
+        $qtPath = "${{ github.workspace }}\Qt\${{ env.QT_VERSION }}\msvc2019_64"
+        Write-Host "Qt path: $qtPath"
+
+        # Verify critical files exist
+        $moc = "$qtPath\bin\moc.exe"
+        $qmake = "$qtPath\bin\qmake6.exe"
+
+        if (Test-Path $moc) { Write-Host "moc.exe: OK" } else { Write-Host "moc.exe: MISSING" }
+        if (Test-Path $qmake) { Write-Host "qmake6.exe: OK" } else { Write-Host "qmake6.exe: MISSING" }
+
+        # List all executables in bin
+        Write-Host "`n=== Qt bin directory ==="
+        Get-ChildItem "$qtPath\bin" -Filter "*.exe" | ForEach-Object { Write-Host $_.Name }
+
+        # Set environment variables
+        Add-Content $env:GITHUB_ENV "QT_ROOT_DIR=$qtPath"
+        Add-Content $env:GITHUB_PATH "$qtPath\bin"
 
     # Cache other dependencies
     - name: Cache OpenCASCADE
@@ -116,15 +147,9 @@ jobs:
       run: |
         $depsDir = "${{ github.workspace }}\deps"
 
-        # Qt - use the path set by install-qt-action
-        Write-Host "=== Qt Configuration ==="
-        Write-Host "QT_ROOT_DIR from action: $env:QT_ROOT_DIR"
+        # Qt is already configured in "Set Qt environment" step
         $qtPath = $env:QT_ROOT_DIR
-        if (-not $qtPath -or -not (Test-Path "$qtPath\bin\qmake6.exe")) {
-            Write-Error "Qt not found! QT_ROOT_DIR=$qtPath"
-            exit 1
-        }
-        Write-Host "Qt path verified: $qtPath"
+        Write-Host "Qt path: $qtPath"
 
         # OCCT - find the inc directory
         Write-Host "`n=== OCCT Configuration ==="
