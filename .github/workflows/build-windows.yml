@@ -35,36 +35,7 @@ jobs:
       with:
         arch: amd64
 
-    # Cache dependencies
-    - name: Cache Qt
-      id: cache-qt
-      uses: actions/cache@v4
-      with:
-        path: ${{ github.workspace }}/Qt
-        key: qt-${{ env.QT_VERSION }}-windows-msvc2019
-
-    - name: Cache OpenCASCADE
-      id: cache-occt
-      uses: actions/cache@v4
-      with:
-        path: ${{ github.workspace }}/occt
-        key: occt-${{ env.OCCT_VERSION }}-windows
-
-    - name: Cache GMSH
-      id: cache-gmsh
-      uses: actions/cache@v4
-      with:
-        path: ${{ github.workspace }}/gmsh
-        key: gmsh-${{ env.GMSH_VERSION }}-windows
-
-    - name: Cache OpenBLAS
-      id: cache-openblas
-      uses: actions/cache@v4
-      with:
-        path: ${{ github.workspace }}/openblas
-        key: openblas-${{ env.OPENBLAS_VERSION }}-windows
-
-    # Install Qt
+    # Install Qt using the action (has built-in caching)
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:
@@ -72,104 +43,161 @@ jobs:
         host: windows
         target: desktop
         arch: win64_msvc2019_64
-        dir: ${{ github.workspace }}/Qt
         cache: true
+
+    # Cache other dependencies
+    - name: Cache OpenCASCADE
+      id: cache-occt
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/deps/occt
+        key: occt-${{ env.OCCT_VERSION }}-windows-v2
+
+    - name: Cache GMSH
+      id: cache-gmsh
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/deps/gmsh
+        key: gmsh-${{ env.GMSH_VERSION }}-windows-v2
+
+    - name: Cache OpenBLAS
+      id: cache-openblas
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/deps/openblas
+        key: openblas-${{ env.OPENBLAS_VERSION }}-windows-v2
 
     # Download OpenCASCADE
     - name: Download OpenCASCADE
       if: steps.cache-occt.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
-        # OCCT 7.9.x uses different naming: opencascade-release-no-pch.zip
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/deps/occt"
         $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V${{ env.OCCT_VERSION }}/opencascade-release-no-pch.zip"
         Write-Host "Downloading OCCT from: $occtUrl"
-        Invoke-WebRequest -Uri $occtUrl -OutFile occt.zip
-        Expand-Archive occt.zip -DestinationPath ${{ github.workspace }}/occt
-        Get-ChildItem -Path ${{ github.workspace }}/occt -Recurse -Directory | Select-Object -First 5
+        Invoke-WebRequest -Uri $occtUrl -OutFile occt.zip -UseBasicParsing
+        Expand-Archive occt.zip -DestinationPath "${{ github.workspace }}/deps/occt" -Force
+        Remove-Item occt.zip
+        Write-Host "=== OCCT extracted contents ==="
+        Get-ChildItem -Path "${{ github.workspace }}/deps/occt" -Recurse -Depth 2 | ForEach-Object { Write-Host $_.FullName }
 
     # Download GMSH SDK
     - name: Download GMSH SDK
       if: steps.cache-gmsh.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/deps/gmsh"
         $gmshUrl = "https://gmsh.info/bin/Windows/gmsh-${{ env.GMSH_VERSION }}-Windows64-sdk.zip"
         Write-Host "Downloading GMSH from: $gmshUrl"
-        Invoke-WebRequest -Uri $gmshUrl -OutFile gmsh.zip
-        Expand-Archive gmsh.zip -DestinationPath ${{ github.workspace }}/gmsh
-        Get-ChildItem -Path ${{ github.workspace }}/gmsh -Recurse -Directory | Select-Object -First 5
+        Invoke-WebRequest -Uri $gmshUrl -OutFile gmsh.zip -UseBasicParsing
+        Expand-Archive gmsh.zip -DestinationPath "${{ github.workspace }}/deps/gmsh" -Force
+        Remove-Item gmsh.zip
+        Write-Host "=== GMSH extracted contents ==="
+        Get-ChildItem -Path "${{ github.workspace }}/deps/gmsh" -Recurse -Depth 2 | ForEach-Object { Write-Host $_.FullName }
 
     # Download OpenBLAS
     - name: Download OpenBLAS
       if: steps.cache-openblas.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/deps/openblas"
         $openblasUrl = "https://github.com/OpenMathLib/OpenBLAS/releases/download/v${{ env.OPENBLAS_VERSION }}/OpenBLAS-${{ env.OPENBLAS_VERSION }}-x64.zip"
         Write-Host "Downloading OpenBLAS from: $openblasUrl"
-        Invoke-WebRequest -Uri $openblasUrl -OutFile openblas.zip
-        Expand-Archive openblas.zip -DestinationPath ${{ github.workspace }}/openblas
-        Get-ChildItem -Path ${{ github.workspace }}/openblas -Recurse | Select-Object -First 10
+        Invoke-WebRequest -Uri $openblasUrl -OutFile openblas.zip -UseBasicParsing
+        Expand-Archive openblas.zip -DestinationPath "${{ github.workspace }}/deps/openblas" -Force
+        Remove-Item openblas.zip
+        Write-Host "=== OpenBLAS extracted contents ==="
+        Get-ChildItem -Path "${{ github.workspace }}/deps/openblas" -Recurse -Depth 2 | ForEach-Object { Write-Host $_.FullName }
 
-    # Configure environment
+    # Configure environment - find actual paths dynamically
     - name: Configure environment
       shell: pwsh
       run: |
-        Write-Host "=== DEBUG: Directory structures ==="
+        $depsDir = "${{ github.workspace }}\deps"
 
-        # Qt path
-        $qtPath = "${{ github.workspace }}\Qt\Qt\${{ env.QT_VERSION }}\msvc2019_64"
-        Write-Host "Qt path: $qtPath"
-        Write-Host "Qt exists: $(Test-Path $qtPath)"
+        # Qt - use the path set by install-qt-action
+        Write-Host "=== Qt Configuration ==="
+        Write-Host "QT_ROOT_DIR from action: $env:QT_ROOT_DIR"
+        $qtPath = $env:QT_ROOT_DIR
+        if (-not $qtPath -or -not (Test-Path "$qtPath\bin\qmake6.exe")) {
+            Write-Error "Qt not found! QT_ROOT_DIR=$qtPath"
+            exit 1
+        }
+        Write-Host "Qt path verified: $qtPath"
 
-        # OCCT - show structure first
-        Write-Host "`n=== OCCT directory structure ==="
-        Get-ChildItem -Path "${{ github.workspace }}\occt" -Recurse -Depth 3 | ForEach-Object { Write-Host $_.FullName }
-
-        # Find OCCT path - look for 'inc' subdirectory
-        $occtBase = "${{ github.workspace }}\occt"
-        $occtPath = $null
-        # Check if inc is directly under a subdirectory
-        $incDir = Get-ChildItem -Path $occtBase -Recurse -Directory -Filter "inc" | Select-Object -First 1
+        # OCCT - find the inc directory
+        Write-Host "`n=== OCCT Configuration ==="
+        $occtBase = "$depsDir\occt"
+        $incDir = Get-ChildItem -Path $occtBase -Recurse -Directory -Filter "inc" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($incDir) {
             $occtPath = $incDir.Parent.FullName
         } else {
-            # Fallback to first directory
-            $occtPath = (Get-ChildItem -Path $occtBase -Directory | Select-Object -First 1).FullName
+            # Maybe headers are directly in a subfolder
+            $firstDir = Get-ChildItem -Path $occtBase -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($firstDir) {
+                $occtPath = $firstDir.FullName
+            } else {
+                $occtPath = $occtBase
+            }
         }
-        Write-Host "`nOCCT_DIR: $occtPath"
+        Write-Host "OCCT path: $occtPath"
+        Write-Host "OCCT inc exists: $(Test-Path "$occtPath\inc")"
 
-        # OpenBLAS - show structure
-        Write-Host "`n=== OpenBLAS directory structure ==="
-        Get-ChildItem -Path "${{ github.workspace }}\openblas" -Recurse -Depth 2 | ForEach-Object { Write-Host $_.FullName }
-        $openblasPath = "${{ github.workspace }}\openblas"
+        # GMSH - find gmsh-* directory
+        Write-Host "`n=== GMSH Configuration ==="
+        $gmshDir = Get-ChildItem -Path "$depsDir\gmsh" -Directory -Filter "gmsh*" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($gmshDir) {
+            $gmshPath = $gmshDir.FullName
+        } else {
+            $gmshPath = "$depsDir\gmsh"
+        }
+        Write-Host "GMSH path: $gmshPath"
+        Write-Host "GMSH lib exists: $(Test-Path "$gmshPath\lib")"
 
-        # GMSH path
-        $gmshPath = (Get-ChildItem -Path "${{ github.workspace }}\gmsh" -Directory -Filter "gmsh*" | Select-Object -First 1).FullName
-        Write-Host "`nGMSH_DIR: $gmshPath"
+        # OpenBLAS - check structure
+        Write-Host "`n=== OpenBLAS Configuration ==="
+        $openblasPath = "$depsDir\openblas"
+        # OpenBLAS zip might extract with or without subdirectory
+        if (-not (Test-Path "$openblasPath\include")) {
+            $subdir = Get-ChildItem -Path $openblasPath -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($subdir -and (Test-Path "$($subdir.FullName)\include")) {
+                $openblasPath = $subdir.FullName
+            }
+        }
+        Write-Host "OpenBLAS path: $openblasPath"
+        Write-Host "OpenBLAS include exists: $(Test-Path "$openblasPath\include")"
+        Write-Host "OpenBLAS lib exists: $(Test-Path "$openblasPath\lib")"
 
-        # Set environment variables for qmake (use Add-Content to avoid BOM issues)
-        Write-Host "`n=== Setting environment variables ==="
+        # Set environment variables
+        Write-Host "`n=== Setting Environment Variables ==="
         Add-Content $env:GITHUB_ENV "Qt6_DIR=$qtPath"
         Add-Content $env:GITHUB_ENV "OCCT_DIR=$occtPath"
         Add-Content $env:GITHUB_ENV "GMSH_DIR=$gmshPath"
         Add-Content $env:GITHUB_ENV "OPENBLAS_INCLUDE=$openblasPath\include"
         Add-Content $env:GITHUB_ENV "OPENBLAS_LIB=$openblasPath\lib"
 
-        Write-Host "Qt6_DIR=$qtPath"
-        Write-Host "OCCT_DIR=$occtPath"
-        Write-Host "GMSH_DIR=$gmshPath"
-        Write-Host "OPENBLAS_INCLUDE=$openblasPath\include"
-        Write-Host "OPENBLAS_LIB=$openblasPath\lib"
-
-        # Add to PATH for runtime
+        # Add to PATH
         Add-Content $env:GITHUB_PATH "$qtPath\bin"
-        Add-Content $env:GITHUB_PATH "$occtPath\win64\vc14\bin"
-        Add-Content $env:GITHUB_PATH "$gmshPath\lib"
-        Add-Content $env:GITHUB_PATH "$openblasPath\bin"
+        if (Test-Path "$occtPath\win64\vc14\bin") {
+            Add-Content $env:GITHUB_PATH "$occtPath\win64\vc14\bin"
+        }
+        if (Test-Path "$gmshPath\lib") {
+            Add-Content $env:GITHUB_PATH "$gmshPath\lib"
+        }
+        if (Test-Path "$openblasPath\bin") {
+            Add-Content $env:GITHUB_PATH "$openblasPath\bin"
+        }
 
-    # Verify environment before build
-    - name: Verify environment
+        Write-Host "`nEnvironment configured successfully"
+
+    # Verify all dependencies before build
+    - name: Verify dependencies
       shell: cmd
       run: |
+        echo === Verifying Qt ===
+        where qmake6.exe
+        qmake6.exe -v
+        echo.
         echo === Environment Variables ===
         echo Qt6_DIR=%Qt6_DIR%
         echo OCCT_DIR=%OCCT_DIR%
@@ -177,38 +205,37 @@ jobs:
         echo OPENBLAS_INCLUDE=%OPENBLAS_INCLUDE%
         echo OPENBLAS_LIB=%OPENBLAS_LIB%
         echo.
-        echo === Verify paths exist ===
-        if exist "%Qt6_DIR%\bin\qmake6.exe" (echo Qt qmake: OK) else (echo Qt qmake: MISSING)
-        if exist "%OCCT_DIR%\inc" (echo OCCT inc: OK) else (echo OCCT inc: MISSING)
-        if exist "%OPENBLAS_INCLUDE%" (echo OpenBLAS include: OK) else (echo OpenBLAS include: MISSING)
-        if exist "%OPENBLAS_LIB%" (echo OpenBLAS lib: OK) else (echo OpenBLAS lib: MISSING)
+        echo === Checking paths ===
+        if exist "%Qt6_DIR%\bin\qmake6.exe" (echo Qt: OK) else (echo Qt: MISSING && exit /b 1)
+        if exist "%OCCT_DIR%" (echo OCCT dir: OK) else (echo OCCT: MISSING && exit /b 1)
+        if exist "%OPENBLAS_INCLUDE%" (echo OpenBLAS include: OK) else (echo OpenBLAS include: MISSING && exit /b 1)
 
     # Build XFoil-lib
     - name: Build XFoil-lib
       shell: cmd
       run: |
         cd XFoil-lib
-        "%Qt6_DIR%\bin\qmake6.exe" XFoil-lib.pro CONFIG+=release
+        qmake6.exe XFoil-lib.pro CONFIG+=release
         nmake
-        dir *.dll *.lib 2>nul || echo "Check for output files"
+        if exist XFoil1.dll (echo Build successful: XFoil1.dll) else (echo Build failed && exit /b 1)
 
     # Build fl5-lib
     - name: Build fl5-lib
       shell: cmd
       run: |
         cd fl5-lib
-        "%Qt6_DIR%\bin\qmake6.exe" fl5-lib.pro CONFIG+=release CONFIG+=CI_OPENBLAS
+        qmake6.exe fl5-lib.pro CONFIG+=release CONFIG+=CI_OPENBLAS
         nmake
-        dir *.dll *.lib 2>nul || echo "Check for output files"
+        if exist fl5-lib1.dll (echo Build successful: fl5-lib1.dll) else (echo Build failed && exit /b 1)
 
     # Build fl5-app
     - name: Build fl5-app
       shell: cmd
       run: |
         cd fl5-app
-        "%Qt6_DIR%\bin\qmake6.exe" fl5-app.pro CONFIG+=release CONFIG+=CI_OPENBLAS
+        qmake6.exe fl5-app.pro CONFIG+=release CONFIG+=CI_OPENBLAS
         nmake
-        dir *.exe 2>nul || echo "Check for output files"
+        if exist flow5.exe (echo Build successful: flow5.exe) else (echo Build failed && exit /b 1)
 
     # Package application
     - name: Package application
@@ -219,39 +246,33 @@ jobs:
         # Copy main executable
         Copy-Item fl5-app/flow5.exe deploy/
 
-        # Run windeployqt to gather Qt DLLs
-        & "$env:Qt6_DIR/bin/windeployqt.exe" --release --no-translations --no-system-d3d-compiler deploy/flow5.exe
+        # Run windeployqt
+        & windeployqt.exe --release --no-translations --no-system-d3d-compiler deploy/flow5.exe
 
         # Copy OpenCASCADE DLLs
-        $occtBin = "$env:OCCT_DIR/win64/vc14/bin"
+        $occtBin = "$env:OCCT_DIR\win64\vc14\bin"
         if (Test-Path $occtBin) {
-            Copy-Item "$occtBin/*.dll" deploy/ -ErrorAction SilentlyContinue
-            Write-Host "Copied OCCT DLLs from $occtBin"
+            Get-ChildItem "$occtBin\*.dll" | Copy-Item -Destination deploy/ -ErrorAction SilentlyContinue
+            Write-Host "Copied OCCT DLLs"
         }
 
         # Copy GMSH DLL
-        $gmshLib = "$env:GMSH_DIR/lib"
-        if (Test-Path "$gmshLib/gmsh.dll") {
-            Copy-Item "$gmshLib/gmsh.dll" deploy/
+        if (Test-Path "$env:GMSH_DIR\lib\gmsh.dll") {
+            Copy-Item "$env:GMSH_DIR\lib\gmsh.dll" deploy/
             Write-Host "Copied gmsh.dll"
         }
 
         # Copy OpenBLAS DLLs
-        $openblasDir = "${{ github.workspace }}/openblas"
-        if (Test-Path "$openblasDir/bin") {
-            Copy-Item "$openblasDir/bin/*.dll" deploy/ -ErrorAction SilentlyContinue
+        $openblasDir = "${{ github.workspace }}\deps\openblas"
+        if (Test-Path "$openblasDir\bin\*.dll") {
+            Get-ChildItem "$openblasDir\bin\*.dll" | Copy-Item -Destination deploy/ -ErrorAction SilentlyContinue
             Write-Host "Copied OpenBLAS DLLs"
         }
 
-        # Copy our custom libraries
-        if (Test-Path "XFoil-lib/XFoil1.dll") {
-            Copy-Item "XFoil-lib/XFoil1.dll" deploy/
-        }
-        if (Test-Path "fl5-lib/fl5-lib1.dll") {
-            Copy-Item "fl5-lib/fl5-lib1.dll" deploy/
-        }
+        # Copy our libraries
+        Copy-Item "XFoil-lib/XFoil1.dll" deploy/ -ErrorAction SilentlyContinue
+        Copy-Item "fl5-lib/fl5-lib1.dll" deploy/ -ErrorAction SilentlyContinue
 
-        # List deployed files
         Write-Host "=== Deployed files ==="
         Get-ChildItem deploy/ | Format-Table Name, Length
 
