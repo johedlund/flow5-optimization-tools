@@ -113,38 +113,75 @@ jobs:
     - name: Configure environment
       shell: pwsh
       run: |
-        # Find Qt path (install-qt-action creates dir/Qt/version/arch structure)
-        $qtPath = "${{ github.workspace }}/Qt/Qt/${{ env.QT_VERSION }}/msvc2019_64"
+        Write-Host "=== DEBUG: Directory structures ==="
+
+        # Qt path
+        $qtPath = "${{ github.workspace }}\Qt\Qt\${{ env.QT_VERSION }}\msvc2019_64"
         Write-Host "Qt path: $qtPath"
-        if (-not (Test-Path $qtPath)) {
-            Write-Host "WARNING: Qt path not found, listing Qt directory:"
-            Get-ChildItem -Path "${{ github.workspace }}/Qt" -Recurse -Directory -Depth 3 | ForEach-Object { Write-Host $_.FullName }
+        Write-Host "Qt exists: $(Test-Path $qtPath)"
+
+        # OCCT - show structure first
+        Write-Host "`n=== OCCT directory structure ==="
+        Get-ChildItem -Path "${{ github.workspace }}\occt" -Recurse -Depth 3 | ForEach-Object { Write-Host $_.FullName }
+
+        # Find OCCT path - look for 'inc' subdirectory
+        $occtBase = "${{ github.workspace }}\occt"
+        $occtPath = $null
+        # Check if inc is directly under a subdirectory
+        $incDir = Get-ChildItem -Path $occtBase -Recurse -Directory -Filter "inc" | Select-Object -First 1
+        if ($incDir) {
+            $occtPath = $incDir.Parent.FullName
+        } else {
+            # Fallback to first directory
+            $occtPath = (Get-ChildItem -Path $occtBase -Directory | Select-Object -First 1).FullName
         }
+        Write-Host "`nOCCT_DIR: $occtPath"
 
-        # Find OCCT path (extracted directory)
-        $occtPath = (Get-ChildItem -Path "${{ github.workspace }}/occt" -Directory | Select-Object -First 1).FullName
-        Write-Host "OCCT path: $occtPath"
+        # OpenBLAS - show structure
+        Write-Host "`n=== OpenBLAS directory structure ==="
+        Get-ChildItem -Path "${{ github.workspace }}\openblas" -Recurse -Depth 2 | ForEach-Object { Write-Host $_.FullName }
+        $openblasPath = "${{ github.workspace }}\openblas"
 
-        # Find GMSH path
-        $gmshPath = (Get-ChildItem -Path "${{ github.workspace }}/gmsh" -Directory -Filter "gmsh*" | Select-Object -First 1).FullName
-        Write-Host "GMSH path: $gmshPath"
+        # GMSH path
+        $gmshPath = (Get-ChildItem -Path "${{ github.workspace }}\gmsh" -Directory -Filter "gmsh*" | Select-Object -First 1).FullName
+        Write-Host "`nGMSH_DIR: $gmshPath"
 
-        # OpenBLAS path
-        $openblasPath = "${{ github.workspace }}/openblas"
-        Write-Host "OpenBLAS path: $openblasPath"
+        # Set environment variables for qmake (use backslashes for Windows)
+        Write-Host "`n=== Setting environment variables ==="
+        "Qt6_DIR=$qtPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "OCCT_DIR=$occtPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "GMSH_DIR=$gmshPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "OPENBLAS_INCLUDE=$openblasPath\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "OPENBLAS_LIB=$openblasPath\lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-        # Set environment variables for qmake
-        echo "Qt6_DIR=$qtPath" >> $env:GITHUB_ENV
-        echo "OCCT_DIR=$occtPath" >> $env:GITHUB_ENV
-        echo "GMSH_DIR=$gmshPath" >> $env:GITHUB_ENV
-        echo "OPENBLAS_INCLUDE=$openblasPath/include" >> $env:GITHUB_ENV
-        echo "OPENBLAS_LIB=$openblasPath/lib" >> $env:GITHUB_ENV
+        Write-Host "Qt6_DIR=$qtPath"
+        Write-Host "OCCT_DIR=$occtPath"
+        Write-Host "GMSH_DIR=$gmshPath"
+        Write-Host "OPENBLAS_INCLUDE=$openblasPath\include"
+        Write-Host "OPENBLAS_LIB=$openblasPath\lib"
 
-        # Add to PATH for runtime and build
-        echo "$qtPath/bin" >> $env:GITHUB_PATH
-        echo "$occtPath/win64/vc14/bin" >> $env:GITHUB_PATH
-        echo "$gmshPath/lib" >> $env:GITHUB_PATH
-        echo "$openblasPath/bin" >> $env:GITHUB_PATH
+        # Add to PATH for runtime
+        "$qtPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        "$occtPath\win64\vc14\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        "$gmshPath\lib" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        "$openblasPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+    # Verify environment before build
+    - name: Verify environment
+      shell: cmd
+      run: |
+        echo === Environment Variables ===
+        echo Qt6_DIR=%Qt6_DIR%
+        echo OCCT_DIR=%OCCT_DIR%
+        echo GMSH_DIR=%GMSH_DIR%
+        echo OPENBLAS_INCLUDE=%OPENBLAS_INCLUDE%
+        echo OPENBLAS_LIB=%OPENBLAS_LIB%
+        echo.
+        echo === Verify paths exist ===
+        if exist "%Qt6_DIR%\bin\qmake6.exe" (echo Qt qmake: OK) else (echo Qt qmake: MISSING)
+        if exist "%OCCT_DIR%\inc" (echo OCCT inc: OK) else (echo OCCT inc: MISSING)
+        if exist "%OPENBLAS_INCLUDE%" (echo OpenBLAS include: OK) else (echo OpenBLAS include: MISSING)
+        if exist "%OPENBLAS_LIB%" (echo OpenBLAS lib: OK) else (echo OpenBLAS lib: MISSING)
 
     # Build XFoil-lib
     - name: Build XFoil-lib
