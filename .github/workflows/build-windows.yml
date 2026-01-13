@@ -210,10 +210,28 @@ jobs:
 
         echo === All dependencies verified ===
 
-    - name: Determine qmake executable
+    - name: Determine qmake executable and set PATH
       shell: cmd
       run: |
         if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (echo QMAKE_EXE=%QT_ROOT_DIR%\bin\qmake6.exe>> %GITHUB_ENV%) else if exist "%QT_ROOT_DIR%\bin\qmake.exe" (echo QMAKE_EXE=%QT_ROOT_DIR%\bin\qmake.exe>> %GITHUB_ENV%) else (echo ERROR: No qmake executable found && exit /b 1)
+        echo %QT_ROOT_DIR%\bin>> %GITHUB_PATH%
+
+    - name: Pre-build diagnostics
+      shell: cmd
+      run: |
+        echo === Environment Check ===
+        echo QMAKE_EXE=%QMAKE_EXE%
+        echo QT_ROOT_DIR=%QT_ROOT_DIR%
+        echo OCCT_DIR=%OCCT_DIR%
+        echo OPENBLAS_INCLUDE=%OPENBLAS_INCLUDE%
+        echo OPENBLAS_LIB=%OPENBLAS_LIB%
+        echo.
+        echo === PATH ===
+        echo %PATH%
+        echo.
+        echo === Verifying moc can run ===
+        moc -v
+        echo.
 
     - name: Build XFoil-lib
       shell: cmd
