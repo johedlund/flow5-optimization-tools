@@ -8,8 +8,8 @@ on:
         default: '6.6.2'
         type: string
       occt_version:
-        description: 'OpenCASCADE version'
-        default: '7.8.1'
+        description: 'OpenCASCADE version (use underscores, e.g., 7_9_2)'
+        default: '7_9_2'
         type: string
       gmsh_version:
         description: 'GMSH version'
@@ -18,7 +18,7 @@ on:
 
 env:
   QT_VERSION: ${{ inputs.qt_version || '6.6.2' }}
-  OCCT_VERSION: ${{ inputs.occt_version || '7.8.1' }}
+  OCCT_VERSION: ${{ inputs.occt_version || '7_9_2' }}
   GMSH_VERSION: ${{ inputs.gmsh_version || '4.13.1' }}
   OPENBLAS_VERSION: '0.3.26'
 
@@ -80,7 +80,8 @@ jobs:
       if: steps.cache-occt.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
-        $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V${{ env.OCCT_VERSION }}/opencascade-${{ env.OCCT_VERSION }}-vc14-64.zip"
+        # OCCT 7.9.x uses different naming: opencascade-release-no-pch.zip
+        $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V${{ env.OCCT_VERSION }}/opencascade-release-no-pch.zip"
         Write-Host "Downloading OCCT from: $occtUrl"
         Invoke-WebRequest -Uri $occtUrl -OutFile occt.zip
         Expand-Archive occt.zip -DestinationPath ${{ github.workspace }}/occt
