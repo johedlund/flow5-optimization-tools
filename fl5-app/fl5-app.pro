@@ -109,6 +109,10 @@ linux-g++ {
 
 win32-msvc {
 
+    # Prevent excessively long command lines for moc
+    # by limiting automatic system include paths
+    QMAKE_INCDIR_POST =
+
     CONFIG += console
     CONFIG -= debug_and_release debug_and_release_target
 
