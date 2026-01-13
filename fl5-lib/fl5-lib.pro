@@ -107,6 +107,9 @@ win32-msvc {
     CI_OPENBLAS {
         # CI build uses OpenBLAS (simpler setup)
         DEFINES += OPENBLAS
+        # Fix C99 _Complex incompatibility with MSVC C++
+        DEFINES += lapack_complex_float="std::complex<float>"
+        DEFINES += lapack_complex_double="std::complex<double>"
         INCLUDEPATH += $$(OPENBLAS_INCLUDE)
         LIBS += -L$$(OPENBLAS_LIB) -lopenblas
     } else {
