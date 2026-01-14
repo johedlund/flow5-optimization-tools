@@ -34,7 +34,9 @@
 
 #include <Standard_Version.hxx>
 
+#ifndef NO_GMSH
 #include <gmsh.h>
+#endif
 
 CreditsDlg::CreditsDlg(QWidget *pParent) : QDialog(pParent)
 {
@@ -90,6 +92,7 @@ void CreditsDlg::setupLayout()
         }
         pOccBox->setLayout(pOccLayout);
     }
+#ifndef NO_GMSH
     QGroupBox *pGmshBox = new QGroupBox("Gmsh");
     {
         QVBoxLayout *pGmshLayout = new QVBoxLayout;
@@ -108,6 +111,7 @@ void CreditsDlg::setupLayout()
         }
         pGmshBox->setLayout(pGmshLayout);
     }
+#endif
 #ifdef INTEL_MKL
     QGroupBox *pMKLBox = new QGroupBox("Intel MKL Library");
     {
@@ -147,7 +151,9 @@ void CreditsDlg::setupLayout()
         pMainLayout->addWidget(plab6);
         pMainLayout->addWidget(pXFoilBox);
         pMainLayout->addWidget(pOccBox);
+#ifndef NO_GMSH
         pMainLayout->addWidget(pGmshBox);
+#endif
 #ifdef INTEL_MKL
         pMainLayout->addWidget(pMKLBox);
 #endif

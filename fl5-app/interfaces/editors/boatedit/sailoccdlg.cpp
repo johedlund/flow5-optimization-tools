@@ -218,9 +218,10 @@ void SailOccDlg::connectSignals()
 {
     ExternalSailDlg::connectSignals();
 
+#ifndef NO_GMSH
     connect(m_pGMesherWt,       SIGNAL(updateFuseView()),     SLOT(onUpdateSailView()));
     connect(m_pGMesherWt,       SIGNAL(outputMsg(QString)), m_ppto, SLOT(onAppendQText(QString)));
-
+#endif
 
     connect(m_pglSailView, SIGNAL(pickedEdge(int,int)), SLOT(onPickedEdge(int,int)));
 
@@ -397,7 +398,9 @@ void SailOccDlg::initMesher()
     }
     (void)iShell;
 
+#ifndef NO_GMSH
     m_pGMesherWt->initWt(pOccSail);
+#endif
 }
 
 

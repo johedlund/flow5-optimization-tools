@@ -232,7 +232,11 @@ void gl3dShapeView::glMake3dObjects()
 //        glMakeWires();
 
         QString log;
+#ifndef NO_GMSH
         gmesh::makeFuseTriangulation(m_pFuse, log);
+#else
+        Q_UNUSED(log);
+#endif
         gl::makeTriangles3Vtx(m_pFuse->triangles(), false, m_vboFaces);
 
         m_bResetglShape = false;

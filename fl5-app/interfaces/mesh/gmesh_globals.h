@@ -25,6 +25,8 @@
 
 #pragma once
 
+#ifndef NO_GMSH
+
 #include <QString>
 
 #include <TopoDS_Shape.hxx>
@@ -93,4 +95,6 @@ namespace gmesh
 
     std::string tempFile();
 }
+
+#endif // NO_GMSH
 

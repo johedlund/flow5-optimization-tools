@@ -69,9 +69,11 @@ void TessControlsDlg::setupLayout()
         m_pStackedWt = new QStackedWidget;
         {
             m_pOccWt = new OccTessCtrlsWt;
-            m_pGmshWt = new GmshCtrlsWt;
             m_pStackedWt->addWidget(m_pOccWt);
+#ifndef NO_GMSH
+            m_pGmshWt = new GmshCtrlsWt;
             m_pStackedWt->addWidget(m_pGmshWt);
+#endif
         }
 
         pMainLayout->addWidget(pCautionLabel);
@@ -97,19 +99,30 @@ void TessControlsDlg::initDialog(OccMeshParams const &occparams, GmshParams cons
     m_prbOcc->setChecked(m_bOcc);
     m_prbGmsh->setChecked(!m_bOcc);
 
+#ifndef NO_GMSH
     if(m_bOcc) m_pStackedWt->setCurrentWidget(m_pOccWt);
     else       m_pStackedWt->setCurrentWidget(m_pGmshWt);
+#else
+    Q_UNUSED(gmshparams);
+    m_pStackedWt->setCurrentWidget(m_pOccWt);
+#endif
 
     m_pOccWt->initWt(occparams);
+#ifndef NO_GMSH
     m_pGmshWt->initWt(gmshparams);
+#endif
 }
 
 
 void TessControlsDlg::onTessellatorChanged()
 {
     m_bOcc = m_prbOcc->isChecked();
+#ifndef NO_GMSH
     if(m_bOcc) m_pStackedWt->setCurrentWidget(m_pOccWt);
     else       m_pStackedWt->setCurrentWidget(m_pGmshWt);
+#else
+    m_pStackedWt->setCurrentWidget(m_pOccWt);
+#endif
 
     m_bChanged = true;
 }

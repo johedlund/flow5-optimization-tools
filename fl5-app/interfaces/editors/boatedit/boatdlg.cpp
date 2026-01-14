@@ -77,7 +77,9 @@
 #include <interfaces/editors/fuseedit/fuseoccdlg.h>
 #include <interfaces/editors/fuseedit/fusestldlg.h>
 #include <interfaces/editors/fuseedit/xflfuseedit/fusexfldefdlg.h>
+#ifndef NO_GMSH
 #include <interfaces/mesh/gmesh_globals.h>
+#endif
 #include <interfaces/opengl/controls/gl3dgeomcontrols.h>
 #include <interfaces/opengl/fl5views/gl3dboatview.h>
 #include <interfaces/widgets/customdlg/newnamedlg.h>
@@ -754,10 +756,12 @@ void BoatDlg::onImportHullCAD()
     pNewHullOcc->makeShellsFromShapes();
 
     logmsg.clear();
+#ifndef NO_GMSH
     m_ppto->appendPlainText("Making shell triangulation\n");
 
     gmesh::makeFuseTriangulation(pNewHullOcc, logmsg, "   ");
     pNewHullOcc->saveBaseTriangulation();
+#endif
     pNewHullOcc->computeSurfaceProperties(strlog, "   ");
     logmsg += QString::fromStdString(strlog);
     m_ppto->onAppendQText(logmsg+"\n");

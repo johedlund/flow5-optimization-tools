@@ -63,7 +63,9 @@ class FloatEdit;
 class IntEdit;
 
 class MesherWt;
+#ifndef NO_GMSH
 class GMesherWt;
+#endif
 class OccTessCtrlsWt;
 
 class PlaneXflDlg : public PlaneDlg
@@ -201,7 +203,9 @@ class PlaneXflDlg : public PlaneDlg
 
         QAction *m_pResetFuse, *m_pTessellation;
 
+#ifndef NO_GMSH
         GMesherWt *m_pGMesherWt;
+#endif
         QAction *m_pRestoreFuseMesh, *m_pFuseMesher;
 
         QFrame *m_pMeshCorrectionsFrame;

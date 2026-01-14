@@ -65,7 +65,9 @@
 #include <interfaces/exchange/cadexportdlg.h>
 #include <interfaces/exchange/stlwriterdlg.h>
 #include <interfaces/mesh/afmesher.h>
+#ifndef NO_GMSH
 #include <interfaces/mesh/gmesherwt.h>
+#endif
 #include <interfaces/mesh/mesherwt.h>
 #include <interfaces/mesh/meshevent.h>
 #include <interfaces/opengl/controls/gl3dgeomcontrols.h>
@@ -325,11 +327,15 @@ void SailDlg::makeCommonWts()
                 m_pfrRuledMesh->setLayout(pRuledMeshLayout);
             }
 
+#ifndef NO_GMSH
             m_pGMesherWt = new GMesherWt(this);
+#endif
 
             pMeshLayout->addWidget(m_pgbMeshType);
             pMeshLayout->addWidget(m_pfrRuledMesh);
+#ifndef NO_GMSH
             pMeshLayout->addWidget(m_pGMesherWt);
+#endif
         }
 
         m_pfrMesh->setLayout(pMeshLayout);
@@ -563,7 +569,9 @@ void SailDlg::initDialog(Sail *pSail)
     m_pfeRefArea->setValue(pSail->refArea()*Units::m2toUnit());
     m_pfeRefChord->setValue(pSail->refChord()*Units::mtoUnit());
 
+#ifndef NO_GMSH
     m_pGMesherWt->initWt(pSail);
+#endif
 }
 
 
@@ -688,7 +696,9 @@ void SailDlg::setControls()
     if(m_pSail)
     {
         m_pfrRuledMesh->setVisible(m_pSail->bRuledMesh());
+#ifndef NO_GMSH
         m_pGMesherWt->setVisible(!m_pSail->bRuledMesh());
+#endif
     }
 }
 

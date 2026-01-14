@@ -31,7 +31,9 @@
 #include <interfaces/widgets/customdlg/xfldialog.h>
 #include <api/occmeshparams.h>
 #include <api/gmshparams.h>
+#ifndef NO_GMSH
 #include <interfaces/mesh/gmshctrlswt.h>
+#endif
 #include <interfaces/mesh/occtessctrlswt.h>
 
 class TessControlsDlg : public XflDialog
@@ -42,12 +44,20 @@ class TessControlsDlg : public XflDialog
         TessControlsDlg(QWidget *pParent);
 
         void initDialog(OccMeshParams const &occparams, GmshParams const &gmshparams, bool bShowBtnBox, bool bOcc);
+#ifndef NO_GMSH
         bool isChanged() const {return m_bChanged || m_pOccWt->isChanged() || m_pGmshWt->isChanged();}
+#else
+        bool isChanged() const {return m_bChanged || m_pOccWt->isChanged();}
+#endif
 
         bool bOcc() const {return m_prbOcc->isChecked();}
 
         OccMeshParams const &occParameters() const {return m_pOccWt->params();}
+#ifndef NO_GMSH
         GmshParams gmshParameters() const {return m_pGmshWt->params();}
+#else
+        GmshParams gmshParameters() const {return GmshParams();}
+#endif
 
 
     private:
@@ -65,7 +75,9 @@ class TessControlsDlg : public XflDialog
         QRadioButton *m_prbOcc, *m_prbGmsh;
         QStackedWidget *m_pStackedWt;
 
+#ifndef NO_GMSH
         GmshCtrlsWt *m_pGmshWt;
+#endif
         OccTessCtrlsWt *m_pOccWt;
 
 

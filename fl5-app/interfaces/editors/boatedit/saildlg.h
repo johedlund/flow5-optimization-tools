@@ -53,7 +53,9 @@ class FloatEdit;
 class IntEdit;
 class LineBtn;
 class MesherWt;
+#ifndef NO_GMSH
 class GMesherWt;
+#endif
 class PlainTextOutput;
 class Sail;
 class SailSectionView;
@@ -216,7 +218,9 @@ class SailDlg : public XflDialog
         IntEdit *m_pieNXPanels;
         IntEdit *m_pieNZPanels;
 
+#ifndef NO_GMSH
         GMesherWt *m_pGMesherWt;
+#endif
 
         CPTableView *m_pcptSections;
 

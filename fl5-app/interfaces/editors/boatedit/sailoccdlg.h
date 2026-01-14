@@ -27,7 +27,9 @@
 
 #include <interfaces/editors/boatedit/externalsaildlg.h>
 
+#ifndef NO_GMSH
 class GMesherWt;
+#endif
 class MesherWt;
 
 class SailOccDlg: public ExternalSailDlg

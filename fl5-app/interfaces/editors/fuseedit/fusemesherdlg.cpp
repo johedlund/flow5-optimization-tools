@@ -57,8 +57,10 @@
 
 #include <core/xflcore.h>
 #include <interfaces/mesh/afmesher.h>
+#ifndef NO_GMSH
 #include <interfaces/mesh/gmesherwt.h>
 #include <interfaces/mesh/gmesh_globals.h>
+#endif
 #include <interfaces/mesh/mesherwt.h>
 #include <interfaces/mesh/meshevent.h>
 #include <interfaces/mesh/panelcheckdlg.h>
@@ -156,6 +158,7 @@ void FuseMesherDlg::setupLayout()
                         {
                             QVBoxLayout *pMeshLayout = new QVBoxLayout;
                             {
+#ifndef NO_GMSH
                                 QHBoxLayout *pMeshSelLayout = new QHBoxLayout;
                                 {
                                     QButtonGroup *pGroup = new QButtonGroup;
@@ -173,18 +176,23 @@ void FuseMesherDlg::setupLayout()
                                     pMeshSelLayout->addWidget(m_prbGMesher);
                                     pMeshSelLayout->addStretch();
                                 }
+#endif
 
                                 m_pMesherWt = new MesherWt(this);
                                 m_pMesherWt->showPickEdge(false);
                     #ifdef QT_DEBUG
                                 m_pMesherWt->showDebugBox(true);
                     #endif
+#ifndef NO_GMSH
                                 m_pGMesherWt = new GMesherWt(this);
                                 m_pMesherWt->setVisible(s_bfl5Mesher);
                                 m_pGMesherWt->setVisible(!s_bfl5Mesher);
                                 pMeshLayout->addLayout(pMeshSelLayout);
+#endif
                                 pMeshLayout->addWidget(m_pMesherWt);
+#ifndef NO_GMSH
                                 pMeshLayout->addWidget(m_pGMesherWt);
+#endif
                             }
                             pfrFreeMesh->setLayout(pMeshLayout);
                         }
@@ -288,7 +296,9 @@ void FuseMesherDlg::initDialog(Fuse *pFuse)
     {
         m_pMesherWt->initWt(pFuse->shells(), pFuse->maxElementSize(), false, false);
     }
+#ifndef NO_GMSH
     m_pGMesherWt->initWt(m_pFuse, pFuse->isXflType(), false);
+#endif
 
     m_ptabViewWt->setCurrentIndex(s_ViewIndex);
 
@@ -311,14 +321,18 @@ void FuseMesherDlg::initDialog(Fuse *pFuse)
 
 void FuseMesherDlg::connectSignals()
 {
+#ifndef NO_GMSH
     connect(m_prbfl5Mesher,      SIGNAL(clicked(bool)),        SLOT(onSelMesher()));
     connect(m_prbGMesher,        SIGNAL(clicked(bool)),        SLOT(onSelMesher()));
+#endif
 
     connect(m_pMesherWt,         SIGNAL(updateFuseView()),     SLOT(onUpdate3dView()));
     connect(m_pMesherWt,         SIGNAL(outputMsg(QString)),   m_ppto, SLOT(onAppendQText(QString)));
 
+#ifndef NO_GMSH
     connect(m_pGMesherWt,        SIGNAL(updateFuseView()),     SLOT(onUpdate3dView()));
     connect(m_pGMesherWt,        SIGNAL(outputMsg(QString)),   m_ppto, SLOT(onAppendQText(QString)));
+#endif
 
     connect(m_ppbMoveNode,       SIGNAL(clicked(bool)),        SLOT(onMergeNodes(bool)));
     connect(m_ppbUndoLastMerge,  SIGNAL(clicked(bool)),        SLOT(onUndoLastMerge()));
@@ -766,9 +780,11 @@ void FuseMesherDlg::onCheckFreeEdges()
 
 void FuseMesherDlg::onSelMesher()
 {
+#ifndef NO_GMSH
     s_bfl5Mesher = m_prbfl5Mesher->isChecked();
     m_pMesherWt->setVisible(s_bfl5Mesher);
     m_pGMesherWt->setVisible(!s_bfl5Mesher);
+#endif
 }
 
 

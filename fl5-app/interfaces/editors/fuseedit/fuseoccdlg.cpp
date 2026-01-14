@@ -40,8 +40,10 @@
 #include <interfaces/editors/fuseedit/shapefixerdlg.h>
 #include <interfaces/exchange/cadexportdlg.h>
 #include <interfaces/mesh/afmesher.h>
+#ifndef NO_GMSH
 #include <interfaces/mesh/gmesh_globals.h>
 #include <interfaces/mesh/gmesherwt.h>
+#endif
 #include <interfaces/mesh/mesherwt.h>
 #include <interfaces/mesh/meshevent.h>
 #include <interfaces/mesh/panelcheckdlg.h>
@@ -92,7 +94,9 @@ void FuseOccDlg::initDialog(Fuse*pFuse)
     m_pFuseOcc = pFuseOcc;
 
     m_pMesherWt->initWt(m_pFuseOcc->shells(), m_pFuseOcc->maxElementSize(), false, false);
+#ifndef NO_GMSH
     m_pGMesherWt->initWt(m_pFuseOcc, false, false);
+#endif
     m_pglFuseView->setFuse(m_pFuseOcc);
 
     updateProperties();
@@ -150,6 +154,7 @@ void FuseOccDlg::setupLayout()
                         {
                             QVBoxLayout *pFreeMeshLayout = new QVBoxLayout;
                             {
+#ifndef NO_GMSH
                                 QHBoxLayout *pMeshSelLayout = new QHBoxLayout;
                                 {
                                     QButtonGroup *pGroup = new QButtonGroup;
@@ -167,18 +172,23 @@ void FuseOccDlg::setupLayout()
                                     pMeshSelLayout->addWidget(m_prbGMesher);
                                     pMeshSelLayout->addStretch();
                                 }
+#endif
 
                                 m_pMesherWt = new MesherWt(this);
                                 m_pMesherWt->showPickEdge(false);
                     #ifdef QT_DEBUG
                                 m_pMesherWt->showDebugBox(true);
                     #endif
+#ifndef NO_GMSH
                                 m_pGMesherWt = new GMesherWt(this);
                                 m_pMesherWt->setVisible(FuseOccDlg::bfl5Mesher());
                                 m_pGMesherWt->setVisible(!FuseOccDlg::bfl5Mesher());
                                 pFreeMeshLayout->addLayout(pMeshSelLayout);
+#endif
                                 pFreeMeshLayout->addWidget(m_pMesherWt);
+#ifndef NO_GMSH
                                 pFreeMeshLayout->addWidget(m_pGMesherWt);
+#endif
                             }
                             pfrFreeMesh->setLayout(pFreeMeshLayout);
                         }
@@ -298,12 +308,16 @@ void FuseOccDlg::connectSignals()
     connect(m_pFlipTessNormals,      SIGNAL(triggered()),       SLOT(onFlipTessNormals()));
 
 
+#ifndef NO_GMSH
     connect(m_prbfl5Mesher,           SIGNAL(clicked(bool)),              SLOT(onSelMesher()));
     connect(m_prbGMesher,             SIGNAL(clicked(bool)),              SLOT(onSelMesher()));
+#endif
     connect(m_pMesherWt,              SIGNAL(outputMsg(QString)), m_ppto, SLOT(onAppendQText(QString)));
     connect(m_pMesherWt,              SIGNAL(updateFuseView()),           SLOT(onUpdateFuseView()));
+#ifndef NO_GMSH
     connect(m_pGMesherWt,             SIGNAL(outputMsg(QString)), m_ppto, SLOT(onAppendQText(QString)));
     connect(m_pGMesherWt,             SIGNAL(updateFuseView()),           SLOT(onUpdateFuseView()));
+#endif
 
     connect(m_pCheckMesh,            SIGNAL(triggered()),       SLOT(onCheckMesh()));
     connect(m_pCenterOnPanel,        SIGNAL(triggered()),       SLOT(onCenterViewOnPanel()));
@@ -370,9 +384,11 @@ void FuseOccDlg::updateOutput(QString const &strong)
 
 void FuseOccDlg::onSelMesher()
 {
+#ifndef NO_GMSH
     s_bfl5Mesher = m_prbfl5Mesher->isChecked();
     m_pMesherWt->setVisible(s_bfl5Mesher);
     m_pGMesherWt->setVisible(!s_bfl5Mesher);
+#endif
 }
 
 
@@ -485,10 +501,12 @@ void FuseOccDlg::onShapeFix()
     updateOutput("Making shells from shapes\n");
     m_pFuse->makeShellsFromShapes();
 
+#ifndef NO_GMSH
     updateOutput("Making shell triangulation\n");
     QString str;
     gmesh::makeFuseTriangulation(m_pFuse, str, prefix);
     updateOutput("Tessellation:\n"+str+"\n");
+#endif
 
     updateProperties();
 
@@ -496,7 +514,9 @@ void FuseOccDlg::onShapeFix()
     m_pglFuseView->update();
 
     m_pMesherWt->initWt(m_pFuseOcc->shells(), m_pFuseOcc->maxElementSize(), false, false);
+#ifndef NO_GMSH
     m_pGMesherWt->initWt(m_pFuseOcc, false, false);
+#endif
 
     m_bChanged = true;
     QApplication::restoreOverrideCursor();

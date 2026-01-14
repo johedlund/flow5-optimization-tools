@@ -49,7 +49,9 @@ void ThinSailDlg::onRuledMesh()
     m_pglSailView->clearSegments();
 
     m_pfrRuledMesh->setVisible(bRuled);
+#ifndef NO_GMSH
     m_pGMesherWt->setVisible(!bRuled);
+#endif
 
     m_pSail->setRuledMesh(bRuled);
     if(bRuled)

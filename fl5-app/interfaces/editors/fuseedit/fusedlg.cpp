@@ -491,13 +491,15 @@ void FuseDlg::onTessellation()
 
         m_pFuse->clearOccTriangulation();
         m_bDescriptionChanged = true;
+#ifndef NO_GMSH
         QString strange;
 //        m_pFuse->makeShellTriangulation(strange, QString());
 
         gmesh::makeFuseTriangulation(m_pFuse, strange);
+        updateOutput("\n"+strange+"\n");
+#endif
         m_pglFuseView->resetFuse();
         updateView();
-        updateOutput("\n"+strange+"\n");
         QApplication::restoreOverrideCursor();
     }
 }

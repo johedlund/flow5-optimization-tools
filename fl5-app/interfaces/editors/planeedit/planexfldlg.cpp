@@ -90,8 +90,10 @@
 #include <interfaces/editors/wingedit/wingscaledlg.h>
 #include <interfaces/exchange/stlwriterdlg.h>
 #include <interfaces/mesh/afmesher.h>
+#ifndef NO_GMSH
 #include <interfaces/mesh/gmesh_globals.h>
 #include <interfaces/mesh/gmesherwt.h>
+#endif
 #include <interfaces/mesh/mesherwt.h>
 #include <interfaces/mesh/meshevent.h>
 #include <interfaces/mesh/tesscontrolsdlg.h>
@@ -191,8 +193,10 @@ void PlaneXflDlg::connectSignals()
     connect(m_pglPlaneView,           SIGNAL(partSelected(Part*)),            SLOT(onSelectPart(Part*)));
     connect(m_pglPlaneView,           SIGNAL(pickedNodePair(QPair<int,int>)), SLOT(onPickedNodePair(QPair<int,int>)));
 
+#ifndef NO_GMSH
     connect(m_pGMesherWt,             SIGNAL(outputMsg(QString)), m_ppto, SLOT(onAppendQText(QString)));
     connect(m_pGMesherWt,             SIGNAL(updateFuseView()),           SLOT(onUpdateMesh()));
+#endif
 
     connect(m_pRestoreFuseMesh,       SIGNAL(triggered()),    SLOT(onResetFuseMesh()));
     connect(m_pFuseMesher,            SIGNAL(triggered()),    SLOT(onFuseMeshDlg()));
@@ -346,6 +350,7 @@ void PlaneXflDlg::setupLayout()
                             pfrThinThick->setLayout(pThinThickLayout);
                         }
 
+#ifndef NO_GMSH
                         QFrame *pfrGmesher = new QFrame;
                         {
                             QVBoxLayout *pGMesherLayout = new QVBoxLayout;
@@ -366,6 +371,7 @@ void PlaneXflDlg::setupLayout()
                             }
                             pfrGmesher->setLayout(pGMesherLayout);
                         }
+#endif
 
                         m_pMeshCorrectionsFrame = new QFrame;
                         {
@@ -462,7 +468,9 @@ void PlaneXflDlg::setupLayout()
                         m_pLeftTabWidget->addTab(pMetaFrame,               "Meta");
                         m_pLeftTabWidget->addTab(pfrParts,                 "Parts");
                         m_pLeftTabWidget->addTab(pfrThinThick,             "Assembly");
+#ifndef NO_GMSH
                         m_pLeftTabWidget->addTab(pfrGmesher,               "Fuselage mesh");
+#endif
                         m_pLeftTabWidget->addTab(m_pMeshCorrectionsFrame , "Mesh connections");
 
                         m_pLeftTabWidget->setTabToolTip(0, "Ctrl+1");
@@ -1159,6 +1167,7 @@ void PlaneXflDlg::onInsertFuseOcc()
     }
     else
     {
+#ifndef NO_GMSH
         m_ppto->appendPlainText("---Making shell triangulation-----\n");
         std::string str;
         logmsg.clear();
@@ -1167,6 +1176,7 @@ void PlaneXflDlg::onInsertFuseOcc()
         pFuseOcc->saveBaseTriangulation();
         pFuseOcc->computeSurfaceProperties(str, "   ");
         updateStdOutput(logmsg.toStdString() + str+"\n");
+#endif
         m_ppto->appendPlainText("---updating plane-----\n");
         onUpdatePlane();
     }
@@ -1996,7 +2006,9 @@ void PlaneXflDlg::onTabChanged(int iNewTab)
                     m_ppto->onAppendQText("   " + QString::fromStdString(wing.name()) + EOLch);
                 }
                 m_ppto->appendEOL(2);
+#ifndef NO_GMSH
                 m_pGMesherWt->setWings(thinwings);
+#endif
             }
             else
             {
@@ -2007,7 +2019,9 @@ void PlaneXflDlg::onTabChanged(int iNewTab)
                     m_ppto->onAppendQText("   " + QString::fromStdString(wing.name()) + EOLch);
                 }
                 m_ppto->appendEOL(2);
+#ifndef NO_GMSH
                 m_pGMesherWt->setWings(thickwings);
+#endif
 
 /*                // get the fuse name currently selected in the assembly table, if any
                 QListWidgetItem *pItem = m_plwFuseListWt->currentItem();
@@ -2026,13 +2040,16 @@ void PlaneXflDlg::onTabChanged(int iNewTab)
 
             if(!pFuse)
             {
+#ifndef NO_GMSH
                 m_pGMesherWt->setEnabled(false);
+#endif
             }
             else
             {
+#ifndef NO_GMSH
                 m_pGMesherWt->setEnabled(true);
                 m_pGMesherWt->initWt(pFuse, pFuse->isXflType(), m_pPlaneXfl->isThickBuild());
-
+#endif
                 AFMesher::setTraceFaceIndex(-1);
             }
             break;
@@ -2091,7 +2108,9 @@ QVector<WingXfl> PlaneXflDlg::thinWingList() const
 void PlaneXflDlg::onThinListClick()
 {
     QVector<WingXfl> winglist = thinWingList();
+#ifndef NO_GMSH
     m_pGMesherWt->setWings(winglist);
+#endif
 
     if(m_pPlaneXfl->isThickBuild())
     {
@@ -2369,10 +2388,11 @@ qDebug("%s", str.c_str());
     pFuse->clearTriangles();
     pFuse->clearTriangleNodes();
 
-
+#ifndef NO_GMSH
     QString logg;
     gmesh::makeFuseTriangulation(pFuse, logg, "   ");
     updateOutput(logg);
+#endif
 
     strong = QString::asprintf("   New triangulation has %d elements\n", pFuse->nTriangles());
     updateOutput(strong+"\n\n");
@@ -2486,10 +2506,11 @@ void PlaneXflDlg::cutFuseShapes(Fuse *pFuse, Vector3d const &fusepos, TopoDS_Lis
     pFuse->clearTriangles();
     pFuse->clearTriangleNodes();
 
+#ifndef NO_GMSH
     QString logmsg;
-
     gmesh::makeFuseTriangulation(pFuse, logmsg, "   ");
-    updateOutput(logmsg);
+    updateOutput(logmsg + "\n\n");
+#endif
 
     strong = QString::asprintf("   New triangulation has %d elements\n", pFuse->nTriangles());
     updateOutput(strong+"\n\n");
@@ -2604,9 +2625,12 @@ void PlaneXflDlg::cutFuseXflRightShapes(Fuse *pFuse, Vector3d const &fusepos, To
 
 //    pFuseXfl->makeShellTriangulation(logmsg, "   ");
 
+#ifndef NO_GMSH
     gmesh::makeFuseTriangulation(pFuse, logmsg, "   ");
-
     updateOutput(logmsg);
+#else
+    Q_UNUSED(logmsg);
+#endif
 
     strong = QString::asprintf("   The new fuse tessellation has %d elements\n", pFuseXfl->nTriangles());
     strong += "\n______\n\n";
@@ -2667,7 +2691,11 @@ void PlaneXflDlg::onInsertFuseXfl()
     pFuse->makeFuseGeometry();
 
     QString logg;
+#ifndef NO_GMSH
     gmesh::makeFuseTriangulation(pFuse, logg, "   ");
+#else
+    Q_UNUSED(logg);
+#endif
     pFuse->saveBaseTriangulation();
 
     std::string logmsg;
@@ -2701,9 +2729,13 @@ void PlaneXflDlg::onTessellation()
         m_bChanged = true;
 
         QString strange;
+#ifndef NO_GMSH
         gmesh::makeFuseTriangulation(pFuse, strange, "   ");
-        pFuse->saveBaseTriangulation();
         updateOutput(strange);
+#else
+        Q_UNUSED(strange);
+#endif
+        pFuse->saveBaseTriangulation();
 
         gl3dPlaneXflView*pglPlaneXflView = dynamic_cast<gl3dPlaneXflView*>(m_pglPlaneView);
         pglPlaneXflView->resetgl3dFuse();
@@ -2799,7 +2831,11 @@ void PlaneXflDlg::onResetFuse()
     gl3dPlaneXflView*pglPlaneXflView = dynamic_cast<gl3dPlaneXflView*>(m_pglPlaneView);
     pglPlaneXflView->resetgl3dFuse();
     QString str;
+#ifndef NO_GMSH
     gmesh::makeFuseTriangulation(pFuse, str, "   ");
+#else
+    Q_UNUSED(str);
+#endif
     pFuse->saveBaseTriangulation();
 
     strange = "The fuse " + pFuse->name() + " has been reset.\n";
@@ -3367,7 +3403,11 @@ void PlaneXflDlg::onInsertCADShape()
         QString logmsg;
         updateOutput("Making shell triangulation\n");
 //        pFuseOcc->makeShellTriangulation(logmsg, "   ");
+#ifndef NO_GMSH
         gmesh::makeFuseTriangulation(pFuseOcc, logmsg, "   ");
+#else
+        Q_UNUSED(logmsg);
+#endif
         pFuseOcc->saveBaseTriangulation();
         std::string str;
         pFuseOcc->computeSurfaceProperties(str, "   ");

@@ -38,7 +38,9 @@
 class FuseOcc;
 class PlainTextOutput;
 class MesherWt;
+#ifndef NO_GMSH
 class GMesherWt;
+#endif
 
 class FuseOccDlg : public FuseDlg
 {
@@ -101,7 +103,10 @@ class FuseOccDlg : public FuseDlg
 
         QPushButton *m_ppbCheckMenuBtn;
 
-        QRadioButton *m_prbfl5Mesher, *m_prbGMesher;
+        QRadioButton *m_prbfl5Mesher;
+#ifndef NO_GMSH
+        QRadioButton *m_prbGMesher;
+#endif
 
         QAction *m_pFlipTessNormals;
 
@@ -110,7 +115,9 @@ class FuseOccDlg : public FuseDlg
         QAction *m_pCheckFreeEdges, *m_pCleanDoubleNode, *m_pConnectPanels;
         QAction *m_pRestoreFuseMesh;
 
+#ifndef NO_GMSH
         GMesherWt *m_pGMesherWt;
+#endif
         MesherWt *m_pMesherWt;
 
         static bool s_bfl5Mesher;

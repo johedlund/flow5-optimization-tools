@@ -47,7 +47,9 @@ class gl3dGeomControls;
 
 class Fuse;
 class MesherWt;
+#ifndef NO_GMSH
 class GMesherWt;
+#endif
 class gl3dFuseView;
 class gl3dShapeView;
 class IntEdit;
@@ -100,9 +102,14 @@ class FuseMesherDlg : public QDialog
 
     private:
 
-        QRadioButton *m_prbfl5Mesher, *m_prbGMesher;
+        QRadioButton *m_prbfl5Mesher;
+#ifndef NO_GMSH
+        QRadioButton *m_prbGMesher;
+#endif
         MesherWt *m_pMesherWt;
+#ifndef NO_GMSH
         GMesherWt *m_pGMesherWt;
+#endif
 
         QSplitter *m_pHSplitter;
         QSplitter *m_pVSplitter;

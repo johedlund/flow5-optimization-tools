@@ -42,7 +42,9 @@
 #include <api/sailstl.h>
 #include <api/sailocc.h>
 #include <api/sailwing.h>
+#ifndef NO_GMSH
 #include <interfaces/mesh/gmesh_globals.h>
+#endif
 
 #include <core/xflcore.h>
 #include <interfaces/widgets/customdlg/renamedlg.h>
@@ -1054,6 +1056,7 @@ void Objects3d::fillSectionCp3Linear(Boat const *pBoat, BoatOpp const *pBtOpp, i
 
 void Objects3d::makePlaneTriangulation(Plane *pPlane)
 {
+#ifndef NO_GMSH
     QString logmsg;
     for(int i=0; i<pPlane->nFuse(); i++)
     {
@@ -1061,11 +1064,15 @@ void Objects3d::makePlaneTriangulation(Plane *pPlane)
         gmesh::makeFuseTriangulation(pFuse, logmsg);
         pFuse->saveBaseTriangulation();
     }
+#else
+    Q_UNUSED(pPlane);
+#endif
 }
 
 
 void Objects3d::makeBoatTriangulation(Boat *pBoat)
 {
+#ifndef NO_GMSH
     QString logmsg;
     for(int i=0; i<pBoat->nHulls(); i++)
     {
@@ -1078,18 +1085,23 @@ void Objects3d::makeBoatTriangulation(Boat *pBoat)
     {
         Objects3d::makeSailTriangulation(pBoat->sail(i));
     }
+#else
+    Q_UNUSED(pBoat);
+#endif
 }
 
 
 // moved here to remove dependency of fl5-lib to gmsh
 void Objects3d::makeSailTriangulation(Sail *pSail, int nx, int nz)
 {
+#ifndef NO_GMSH
     SailOcc *pSailOcc = dynamic_cast<SailOcc*>(pSail);
     if(pSailOcc)
     {
         gmesh::makeSailOccTriangulation(pSailOcc);
     }
     else
+#endif
         pSail->makeTriangulation(nx, nz);
 }
 

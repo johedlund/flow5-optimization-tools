@@ -43,8 +43,9 @@
 #include <QDesktopServices>
 #include <QFileDialog>
 
+#ifndef NO_GMSH
 #include <gmsh.h>
-
+#endif
 
 #include <core/displayoptions.h>
 #include <core/saveoptions.h>
@@ -338,9 +339,11 @@ MainFrame::MainFrame(QWidget *parent) : QMainWindow(parent)
 
     connectSignals();
 
+#ifndef NO_GMSH
     gmsh::initialize();
-    gmsh::option::setNumber("General.Terminal", 0);  
+    gmsh::option::setNumber("General.Terminal", 0);
     gmsh::option::setNumber("Geometry.OCCParallel", 1.0);
+#endif
 }
 
 
@@ -419,7 +422,9 @@ void MainFrame::connectSignals()
 
 MainFrame::~MainFrame()
 {
+#ifndef NO_GMSH
     gmsh::finalize();
+#endif
 
     if(xfl::g_pTraceFile) xfl::g_pTraceFile->close();
 
@@ -2847,7 +2852,9 @@ bool MainFrame::loadSettings()
     FuseMesherDlg::loadSettings(settings);
     GraphOptions::loadSettings(settings);
     LogWt::loadSettings(settings);
+#ifndef NO_GMSH
     GMesherWt::loadSettings(settings);
+#endif
     MesherWt::loadSettings(settings);
     OneVortonTestDlg::loadSettings(settings);
     OpenGlDlg::loadSettings(settings);
@@ -2995,7 +3002,9 @@ void MainFrame::saveSettings()
     FuseMesherDlg::saveSettings(settings);
     GraphOptions::saveSettings(settings);
     LogWt::saveSettings(settings);
+#ifndef NO_GMSH
     GMesherWt::saveSettings(settings);
+#endif
     MesherWt::saveSettings(settings);
     OneVortonTestDlg::saveSettings(settings);
     OpenGlDlg::saveSettings(settings);

@@ -123,10 +123,10 @@ win32-msvc {
         # CI build uses OpenBLAS (simpler setup)
         DEFINES += OPENBLAS
         # Fix C99 _Complex incompatibility with MSVC C++
-        DEFINES += lapack_complex_float="std::complex<float>"
-        DEFINES += lapack_complex_double="std::complex<double>"
+        # Include lapack_config.h which defines the types (angle brackets in cmd.exe break defines)
+        QMAKE_CXXFLAGS += /FI../fl5-lib/api/lapack_config.h
         INCLUDEPATH += $$(OPENBLAS_INCLUDE)
-        LIBS += -L$$(OPENBLAS_LIB) -lopenblas
+        LIBS += -L$$(OPENBLAS_LIB) -llibopenblas
     } else {
         # Local dev uses Intel MKL (default)
         DEFINES += INTEL_MKL
@@ -144,12 +144,20 @@ win32-msvc {
 
 
 #--------------------- GMSH ------------------------
-    # Support CI environment variable or local default path
-    GMSH_DIR = $$(GMSH_DIR)
-    isEmpty(GMSH_DIR): GMSH_DIR = "D:/bin/gmsh-4.14.1-Windows64-sdk"
-    INCLUDEPATH += $${GMSH_DIR}/include
-    LIBS += -L$${GMSH_DIR}/lib
-    LIBS += -lgmsh.dll  # the file name is gmsh.dll.lib
+    # NOTE: The pre-built gmsh SDK for Windows is built with MinGW/GCC which uses
+    # different C++ name mangling than MSVC. Until we build gmsh with MSVC or switch
+    # to the C API, gmsh is disabled on Windows CI builds.
+    NO_GMSH {
+        DEFINES += NO_GMSH
+        message("GMSH disabled - Windows CI build")
+    } else {
+        GMSH_DIR = $$(GMSH_DIR)
+        isEmpty(GMSH_DIR): GMSH_DIR = "D:/bin/gmsh-4.14.1-Windows64-sdk"
+        DEFINES += GMSH_DLL  # Required for __declspec(dllimport) when linking to gmsh.dll
+        INCLUDEPATH += $${GMSH_DIR}/include
+        LIBS += -L$${GMSH_DIR}/lib
+        LIBS += $${GMSH_DIR}/lib/gmsh.dll.lib  # explicit path - MSVC doesn't resolve -lgmsh.dll
+    }
 
 
 #------------ OPEN CASCADE --------------------------
@@ -237,6 +245,8 @@ RESOURCES += \
 
 LIBS += -L../fl5-lib -lfl5-lib
 
+#----- OCC -----
+# Note: OCCT 7.9 renamed some libraries (TKSTEP->TKDESTEP, TKXDESTEP->TKXCAF)
 LIBS += \
     -lTKBRep \
     -lTKBO \
@@ -248,8 +258,9 @@ LIBS += \
     -lTKMesh \
     -lTKOffset \
     -lTKPrim \
-    -lTKSTEP \
-    -lTKXDESTEP \
+    -lTKDE \
+    -lTKDESTEP \
+    -lTKXCAF \
     -lTKShHealing \
     -lTKTopAlgo \
     -lTKXSBase \
