@@ -164,9 +164,17 @@ win32-msvc {
     # Support CI environment variable or local default path
     OCCT_DIR = $$(OCCT_DIR)
     isEmpty(OCCT_DIR): OCCT_DIR = "D:/bin/OCCT-7_9_2/build"
-    INCLUDEPATH += $${OCCT_DIR}/inc
-    LIBS += -L$${OCCT_DIR}/win64/vc14/lib
-    LIBS += -L$${OCCT_DIR}/win64/vc14/bin
+
+    # CI builds use vcpkg with flat include/lib structure
+    CI_VCPKG {
+        INCLUDEPATH += $${OCCT_DIR}/include/opencascade
+        LIBS += -L$${OCCT_DIR}/lib
+    } else {
+        # Local dev with OCCT SDK has inc/ and win64/vc14/lib structure
+        INCLUDEPATH += $${OCCT_DIR}/inc
+        LIBS += -L$${OCCT_DIR}/win64/vc14/lib
+        LIBS += -L$${OCCT_DIR}/win64/vc14/bin
+    }
 
 
 

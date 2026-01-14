@@ -108,10 +108,10 @@ win32-msvc {
         # CI build uses OpenBLAS (simpler setup)
         DEFINES += OPENBLAS
         # Fix C99 _Complex incompatibility with MSVC C++
-        DEFINES += lapack_complex_float="std::complex<float>"
-        DEFINES += lapack_complex_double="std::complex<double>"
+        # Include lapack_config.h which defines the types (angle brackets in cmd.exe break defines)
+        QMAKE_CXXFLAGS += /FIapi/lapack_config.h
         INCLUDEPATH += $$(OPENBLAS_INCLUDE)
-        LIBS += -L$$(OPENBLAS_LIB) -lopenblas
+        LIBS += -L$$(OPENBLAS_LIB) -llibopenblas
     } else {
         # Local dev uses Intel MKL (default)
         DEFINES += INTEL_MKL
@@ -132,9 +132,17 @@ win32-msvc {
     # Support CI environment variable or local default path
     OCCT_DIR = $$(OCCT_DIR)
     isEmpty(OCCT_DIR): OCCT_DIR = "D:/bin/OCCT-7_9_2/build"
-    INCLUDEPATH += $${OCCT_DIR}/inc
-    LIBS += -L$${OCCT_DIR}/win64/vc14/lib
-    LIBS += -L$${OCCT_DIR}/win64/vc14/bin
+
+    # CI builds use vcpkg with flat include/lib structure
+    CI_VCPKG {
+        INCLUDEPATH += $${OCCT_DIR}/include/opencascade
+        LIBS += -L$${OCCT_DIR}/lib
+    } else {
+        # Local dev with OCCT SDK has inc/ and win64/vc14/lib structure
+        INCLUDEPATH += $${OCCT_DIR}/inc
+        LIBS += -L$${OCCT_DIR}/win64/vc14/lib
+        LIBS += -L$${OCCT_DIR}/win64/vc14/bin
+    }
 
 }
 
@@ -175,13 +183,15 @@ include (fl5-lib.pri)
 
 
 #----- OCC -----
+# Note: OCCT 7.9 renamed some libraries (TKSTEP->TKDESTEP, TKXDESTEP->TKXCAF)
 LIBS += \
     -lTKBO \
     -lTKBRep \
     -lTKBool \
     -lTKCDF \
-    -lTKSTEP \
-    -lTKXDESTEP \
+    -lTKDE \
+    -lTKDESTEP \
+    -lTKXCAF \
     -lTKFillet \
     -lTKG2d \
     -lTKG3d \

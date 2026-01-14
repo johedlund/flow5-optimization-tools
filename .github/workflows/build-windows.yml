@@ -10,8 +10,6 @@ on:
 
 env:
   QT_VERSION: ${{ inputs.qt_version || '6.6.2' }}
-  OCCT_VERSION: '7_9_2'
-  GMSH_VERSION: '4.13.1'
   OPENBLAS_VERSION: '0.3.26'
 
 jobs:
@@ -203,30 +201,18 @@ jobs:
         echo === Qt verification successful ===
 
     # Download dependencies
-    - name: Download OpenCASCADE
+    - name: Install vcpkg and OpenCASCADE
       shell: pwsh
       run: |
-        $occtUrl = "https://github.com/Open-Cascade-SAS/OCCT/releases/download/V${{ env.OCCT_VERSION }}/occt-combined-release-no-pch.zip"
-        Write-Host "Downloading OCCT from: $occtUrl"
-        Invoke-WebRequest -Uri $occtUrl -OutFile occt.zip -UseBasicParsing
-        Expand-Archive occt.zip -DestinationPath "${{ github.workspace }}\occt" -Force
-        Remove-Item occt.zip
+        Write-Host "=== Installing vcpkg ==="
+        git clone https://github.com/microsoft/vcpkg.git
+        .\vcpkg\bootstrap-vcpkg.bat
 
-        # Find and display structure
-        Write-Host "=== OCCT structure ==="
-        Get-ChildItem "${{ github.workspace }}\occt" -Recurse -Depth 2 -Directory | ForEach-Object { Write-Host $_.FullName }
+        Write-Host "=== Installing OpenCASCADE via vcpkg ==="
+        .\vcpkg\vcpkg install opencascade:x64-windows
 
-    - name: Download GMSH
-      shell: pwsh
-      run: |
-        $gmshUrl = "https://gmsh.info/bin/Windows/gmsh-${{ env.GMSH_VERSION }}-Windows64-sdk.zip"
-        Write-Host "Downloading GMSH from: $gmshUrl"
-        Invoke-WebRequest -Uri $gmshUrl -OutFile gmsh.zip -UseBasicParsing
-        Expand-Archive gmsh.zip -DestinationPath "${{ github.workspace }}\gmsh" -Force
-        Remove-Item gmsh.zip
-
-        Write-Host "=== GMSH structure ==="
-        Get-ChildItem "${{ github.workspace }}\gmsh" -Recurse -Depth 2 -Directory | ForEach-Object { Write-Host $_.FullName }
+        Write-Host "=== OCCT installed structure ==="
+        Get-ChildItem ".\vcpkg\installed\x64-windows" -Recurse -Depth 2 -Directory | ForEach-Object { Write-Host $_.FullName }
 
     - name: Download OpenBLAS
       shell: pwsh
@@ -245,20 +231,9 @@ jobs:
       run: |
         $ws = "${{ github.workspace }}"
 
-        # Find OCCT - look for inc directory
-        $occtInc = Get-ChildItem "$ws\occt" -Recurse -Directory -Filter "inc" | Select-Object -First 1
-        if ($occtInc) {
-            $occtDir = $occtInc.Parent.FullName
-        } else {
-            $occtDir = (Get-ChildItem "$ws\occt" -Directory | Select-Object -First 1).FullName
-            if (-not $occtDir) { $occtDir = "$ws\occt" }
-        }
+        # OCCT from vcpkg
+        $occtDir = "$ws\vcpkg\installed\x64-windows"
         Write-Host "OCCT_DIR: $occtDir"
-
-        # Find GMSH
-        $gmshDir = (Get-ChildItem "$ws\gmsh" -Directory -Filter "gmsh*" | Select-Object -First 1).FullName
-        if (-not $gmshDir) { $gmshDir = "$ws\gmsh" }
-        Write-Host "GMSH_DIR: $gmshDir"
 
         # OpenBLAS - check if files are in root or subdirectory
         $openblasDir = "$ws\openblas"
@@ -272,16 +247,12 @@ jobs:
 
         # Set environment variables
         Add-Content $env:GITHUB_ENV "OCCT_DIR=$occtDir"
-        Add-Content $env:GITHUB_ENV "GMSH_DIR=$gmshDir"
         Add-Content $env:GITHUB_ENV "OPENBLAS_INCLUDE=$openblasDir\include"
         Add-Content $env:GITHUB_ENV "OPENBLAS_LIB=$openblasDir\lib"
 
         # Add to PATH
-        if (Test-Path "$occtDir\win64\vc14\bin") {
-            Add-Content $env:GITHUB_PATH "$occtDir\win64\vc14\bin"
-        }
-        if (Test-Path "$gmshDir\lib") {
-            Add-Content $env:GITHUB_PATH "$gmshDir\lib"
+        if (Test-Path "$occtDir\bin") {
+            Add-Content $env:GITHUB_PATH "$occtDir\bin"
         }
         if (Test-Path "$openblasDir\bin") {
             Add-Content $env:GITHUB_PATH "$openblasDir\bin"
@@ -344,7 +315,7 @@ jobs:
         # Keep only paths without spaces (filter out Windows SDK paths)
         $env:INCLUDE = ($origInclude -split ';' | Where-Object { $_ -notmatch ' ' }) -join ';'
         Write-Host "Filtered INCLUDE for qmake: $env:INCLUDE"
-        & "$env:QMAKE_EXE" fl5-lib.pro CONFIG+=release CONFIG+=CI_OPENBLAS
+        & "$env:QMAKE_EXE" fl5-lib.pro CONFIG+=release CONFIG+=CI_OPENBLAS CONFIG+=CI_VCPKG
         # Restore full INCLUDE for compilation
         $env:INCLUDE = $origInclude
         nmake
@@ -358,7 +329,7 @@ jobs:
         $origInclude = $env:INCLUDE
         $env:INCLUDE = ($origInclude -split ';' | Where-Object { $_ -notmatch ' ' }) -join ';'
         Write-Host "Filtered INCLUDE for qmake: $env:INCLUDE"
-        & "$env:QMAKE_EXE" fl5-app.pro CONFIG+=release CONFIG+=CI_OPENBLAS
+        & "$env:QMAKE_EXE" fl5-app.pro CONFIG+=release CONFIG+=CI_OPENBLAS CONFIG+=CI_VCPKG CONFIG+=NO_GMSH
         # Restore full INCLUDE for compilation
         $env:INCLUDE = $origInclude
         nmake
@@ -373,14 +344,9 @@ jobs:
         # Qt deployment
         & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-translations deploy/flow5.exe
 
-        # Copy OCCT DLLs
-        if (Test-Path "$env:OCCT_DIR\win64\vc14\bin") {
-            Copy-Item "$env:OCCT_DIR\win64\vc14\bin\*.dll" deploy/ -ErrorAction SilentlyContinue
-        }
-
-        # Copy GMSH
-        if (Test-Path "$env:GMSH_DIR\lib\gmsh.dll") {
-            Copy-Item "$env:GMSH_DIR\lib\gmsh.dll" deploy/
+        # Copy OCCT DLLs (from vcpkg)
+        if (Test-Path "$env:OCCT_DIR\bin") {
+            Copy-Item "$env:OCCT_DIR\bin\*.dll" deploy/ -ErrorAction SilentlyContinue
         }
 
         # Copy OpenBLAS
