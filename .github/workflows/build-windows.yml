@@ -201,6 +201,7 @@ jobs:
         echo === Qt verification successful ===
 
     # Download dependencies
+# Cache vcpkg packages - using save-always to cache even on failure
     - name: Cache vcpkg packages
       id: vcpkg-cache
       uses: actions/cache@v4
@@ -208,13 +209,21 @@ jobs:
         path: |
           vcpkg/installed
           vcpkg/packages
-        key: vcpkg-opencascade-x64-windows-v1
+          ~\AppData\Local\vcpkg\archives
+        key: vcpkg-opencascade-x64-windows-v2-${{ hashFiles('**/vcpkg.json', '.github/workflows/build-windows.yml') }}
         restore-keys: |
+          vcpkg-opencascade-x64-windows-v2-
           vcpkg-opencascade-x64-windows-
+        save-always: true  # <-- THIS IS THE KEY FIX: saves cache even if later steps fail
 
     - name: Install vcpkg and OpenCASCADE
       shell: pwsh
+      env:
+        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-binary-cache
       run: |
+        # Create binary cache directory
+        New-Item -ItemType Directory -Force -Path "$env:VCPKG_DEFAULT_BINARY_CACHE"
+        
         Write-Host "=== Installing vcpkg ==="
         if (-not (Test-Path "vcpkg")) {
             git clone https://github.com/microsoft/vcpkg.git
