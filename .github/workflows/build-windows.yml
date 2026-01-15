@@ -201,15 +201,33 @@ jobs:
         echo === Qt verification successful ===
 
     # Download dependencies
+    - name: Cache vcpkg packages
+      id: vcpkg-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          vcpkg/installed
+          vcpkg/packages
+        key: vcpkg-opencascade-x64-windows-v1
+        restore-keys: |
+          vcpkg-opencascade-x64-windows-
+
     - name: Install vcpkg and OpenCASCADE
       shell: pwsh
       run: |
         Write-Host "=== Installing vcpkg ==="
-        git clone https://github.com/microsoft/vcpkg.git
+        if (-not (Test-Path "vcpkg")) {
+            git clone https://github.com/microsoft/vcpkg.git
+        }
         .\vcpkg\bootstrap-vcpkg.bat
 
-        Write-Host "=== Installing OpenCASCADE via vcpkg ==="
-        .\vcpkg\vcpkg install opencascade:x64-windows
+        # Skip install if cache hit and installed dir exists with OCCT
+        if (Test-Path "vcpkg\installed\x64-windows\include\opencascade") {
+            Write-Host "=== OCCT already installed from cache ==="
+        } else {
+            Write-Host "=== Installing OpenCASCADE via vcpkg (this takes ~3 hours first time) ==="
+            .\vcpkg\vcpkg install opencascade:x64-windows
+        }
 
         Write-Host "=== OCCT installed structure ==="
         Get-ChildItem ".\vcpkg\installed\x64-windows" -Recurse -Depth 2 -Directory | ForEach-Object { Write-Host $_.FullName }
