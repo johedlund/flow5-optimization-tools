@@ -295,21 +295,29 @@ jobs:
         }
 
     - name: Verify all dependencies
-      shell: cmd
+      shell: pwsh
       run: |
-        echo === Checking Qt ===
-        if exist "%QT_ROOT_DIR%\bin\qmake6.exe" (echo qmake6: OK) else (echo qmake6: MISSING && exit /b 1)
-        if exist "%QT_ROOT_DIR%\bin\moc.exe" (echo moc: OK) else (echo moc: MISSING && exit /b 1)
+        Write-Host "=== Checking Qt ==="
+        if (Test-Path "$env:QT_ROOT_DIR\bin\qmake6.exe") { Write-Host "qmake6: OK" } else { Write-Error "qmake6: MISSING"; exit 1 }
+        if (Test-Path "$env:QT_ROOT_DIR\bin\moc.exe") { Write-Host "moc: OK" } else { Write-Error "moc: MISSING"; exit 1 }
 
-        echo === Checking OCCT ===
-        echo OCCT_DIR=%OCCT_DIR%
-        if exist "%OCCT_DIR%" (echo OCCT dir: OK) else (echo OCCT: MISSING && exit /b 1)
+        Write-Host "=== Checking OCCT ==="
+        Write-Host "OCCT_DIR=$env:OCCT_DIR"
+        if (Test-Path "$env:OCCT_DIR") { Write-Host "OCCT dir: OK" } else { Write-Error "OCCT: MISSING"; exit 1 }
 
-        echo === Checking OpenBLAS ===
-        echo OPENBLAS_INCLUDE=%OPENBLAS_INCLUDE%
-        if exist "%OPENBLAS_INCLUDE%" (echo OpenBLAS include: OK) else (echo OpenBLAS: MISSING && exit /b 1)
+        Write-Host "=== OCCT libraries available ==="
+        Get-ChildItem "$env:OCCT_DIR\lib\TK*.lib" | ForEach-Object { Write-Host "  $($_.Name)" }
 
-        echo === All dependencies verified ===
+        Write-Host "=== OpenBLAS ==="
+        Write-Host "OPENBLAS_INCLUDE=$env:OPENBLAS_INCLUDE"
+        Write-Host "OPENBLAS_LIB=$env:OPENBLAS_LIB"
+        Write-Host "=== OpenBLAS libraries available ==="
+        Get-ChildItem "$env:OPENBLAS_LIB\*.lib" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Name)" }
+        Write-Host "=== OpenBLAS include/openblas ==="
+        Get-ChildItem "$env:OPENBLAS_INCLUDE\openblas\*.h" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Name)" }
+        if (Test-Path "$env:OPENBLAS_INCLUDE") { Write-Host "OpenBLAS include: OK" } else { Write-Error "OpenBLAS: MISSING"; exit 1 }
+
+        Write-Host "=== All dependencies verified ==="
 
     - name: Determine qmake executable and set PATH
       shell: cmd
