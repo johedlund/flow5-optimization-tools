@@ -223,8 +223,17 @@ jobs:
         Expand-Archive openblas.zip -DestinationPath "${{ github.workspace }}\openblas" -Force
         Remove-Item openblas.zip
 
+        # Create 'openblas' subdirectory in include so #include <openblas/cblas.h> works
+        $includeDir = Get-ChildItem "${{ github.workspace }}\openblas" -Recurse -Directory -Filter "include" | Select-Object -First 1
+        if ($includeDir) {
+            $openblasSubdir = "$($includeDir.FullName)\openblas"
+            New-Item -ItemType Directory -Force -Path $openblasSubdir
+            Copy-Item "$($includeDir.FullName)\*.h" $openblasSubdir -ErrorAction SilentlyContinue
+            Write-Host "Created openblas include subdirectory: $openblasSubdir"
+        }
+
         Write-Host "=== OpenBLAS structure ==="
-        Get-ChildItem "${{ github.workspace }}\openblas" -Recurse -Depth 2 | ForEach-Object { Write-Host $_.FullName }
+        Get-ChildItem "${{ github.workspace }}\openblas" -Recurse -Depth 3 | ForEach-Object { Write-Host $_.FullName }
 
     - name: Configure paths
       shell: pwsh

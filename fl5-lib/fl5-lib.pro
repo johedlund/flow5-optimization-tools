@@ -110,6 +110,7 @@ win32-msvc {
         # Fix C99 _Complex incompatibility with MSVC C++
         # Include lapack_config.h which defines the types (angle brackets in cmd.exe break defines)
         QMAKE_CXXFLAGS += /FIapi/lapack_config.h
+        # CI workflow creates 'openblas' subdir so #include <openblas/cblas.h> resolves
         INCLUDEPATH += $$(OPENBLAS_INCLUDE)
         LIBS += -L$$(OPENBLAS_LIB) -llibopenblas
     } else {
