@@ -210,11 +210,10 @@ jobs:
           vcpkg/installed
           vcpkg/packages
           ~\AppData\Local\vcpkg\archives
-        key: vcpkg-opencascade-x64-windows-v2-${{ hashFiles('**/vcpkg.json', '.github/workflows/build-windows.yml') }}
+        key: vcpkg-opencascade-x64-windows-v2
         restore-keys: |
-          vcpkg-opencascade-x64-windows-v2-
           vcpkg-opencascade-x64-windows-
-        save-always: true  # <-- THIS IS THE KEY FIX: saves cache even if later steps fail
+        save-always: true
 
     - name: Install vcpkg and OpenCASCADE
       shell: pwsh
