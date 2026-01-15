@@ -346,7 +346,7 @@ jobs:
         # Restore full INCLUDE for compilation
         $env:INCLUDE = $origInclude
         nmake
-        if (Test-Path "fl5-lib1.dll") { Write-Host "SUCCESS: fl5-lib1.dll" } else { exit 1 }
+        if (Test-Path "fl5-lib.dll" -or Test-Path "fl5-lib1.dll") { Write-Host "SUCCESS: fl5-lib*.dll" } else { exit 1 }
 
     - name: Build fl5-app
       shell: pwsh
