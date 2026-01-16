@@ -406,7 +406,7 @@ jobs:
 
         # Copy our libraries
         Copy-Item "XFoil-lib/XFoil1.dll" deploy/ -ErrorAction SilentlyContinue
-        Copy-Item "fl5-lib/fl5-lib1.dll" deploy/ -ErrorAction SilentlyContinue
+        Copy-Item "fl5-lib/fl5-lib1.dll" deploy/fl5-lib.dll -ErrorAction SilentlyContinue
 
         Write-Host "=== Deployed files ==="
         Get-ChildItem deploy/ | Format-Table Name, Length
