@@ -27,7 +27,7 @@ jobs:
         
     # Restore cache at the start
     - name: Restore vcpkg cache
-      id: vcpkg-cache
+      id: cache-vcpkg-restore
       uses: actions/cache/restore@v4
       with:
         path: |
@@ -240,13 +240,14 @@ jobs:
         Get-ChildItem ".\vcpkg\installed\x64-windows" -Recurse -Depth 2 -Directory | ForEach-Object { Write-Host $_.FullName }
         
     - name: Save vcpkg cache
-      if: always()
+      id: cache-vcpkg-save
+      if: always() && steps.cache-vcpkg-restore.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: |
           vcpkg/installed
           vcpkg/packages
-        key: vcpkg-opencascade-x64-windows-v1
+        key: ${{ steps.cache-vcpkg-restore.outputs.cache-primary-key }}
         
     - name: Download OpenBLAS
       shell: pwsh
