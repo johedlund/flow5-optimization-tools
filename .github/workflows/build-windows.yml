@@ -411,6 +411,30 @@ jobs:
         Write-Host "=== Deployed files ==="
         Get-ChildItem deploy/ | Format-Table Name, Length
 
+    - name: Run headless tests
+      shell: pwsh
+      run: |
+        $env:OPENBLAS_NUM_THREADS = "1"
+        $env:PATH = "${{ github.workspace }}\deploy;$env:PATH"
+
+        # Build foiloptimize test
+        Write-Host "=== Building foiloptimize test ==="
+        cmake -S API_examples/foiloptimize -B API_examples/foiloptimize/build `
+          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
+          -DCMAKE_BUILD_TYPE=Release
+        cmake --build API_examples/foiloptimize/build --config Release
+
+        # Run foiloptimize test
+        Write-Host "=== Running foiloptimize test ==="
+        $exe = Get-ChildItem API_examples/foiloptimize/build -Recurse -Filter "FoilOptimizeRun.exe" | Select-Object -First 1
+        if ($exe) {
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { Write-Error "foiloptimize test FAILED"; exit 1 }
+          Write-Host "[PASS] foiloptimize"
+        } else {
+          Write-Host "[SKIP] foiloptimize (exe not found)"
+        }
+
     - name: Create ZIP
       shell: pwsh
       run: |
