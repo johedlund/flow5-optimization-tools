@@ -184,26 +184,56 @@ include (fl5-lib.pri)
 
 
 #----- OCC -----
-# Note: OCCT 7.9 renamed some libraries (TKSTEP->TKDESTEP, TKXDESTEP->TKXCAF)
-LIBS += \
-    -lTKBO \
-    -lTKBRep \
-    -lTKBool \
-    -lTKCDF \
-    -lTKDE \
-    -lTKDESTEP \
-    -lTKXCAF \
-    -lTKFillet \
-    -lTKG2d \
-    -lTKG3d \
-    -lTKGeomAlgo \
-    -lTKGeomBase \
-    -lTKLCAF \
-    -lTKMath \
-    -lTKMesh \
-    -lTKOffset \
-    -lTKPrim \
-    -lTKShHealing \
-    -lTKTopAlgo \
-    -lTKXSBase \
-    -lTKernel \
+# OCCT 7.9 renamed some libraries (TKSTEP->TKDESTEP, TKXDESTEP->TKXCAF, added TKDE)
+# OCCT 7.6 (Ubuntu/Debian packages) uses the old names
+OCCT76 {
+    # OCCT 7.6 library names (Ubuntu/Debian system packages)
+    LIBS += \
+        -lTKBO \
+        -lTKBRep \
+        -lTKBool \
+        -lTKCDF \
+        -lTKSTEP \
+        -lTKSTEP209 \
+        -lTKSTEPAttr \
+        -lTKSTEPBase \
+        -lTKXDESTEP \
+        -lTKFillet \
+        -lTKG2d \
+        -lTKG3d \
+        -lTKGeomAlgo \
+        -lTKGeomBase \
+        -lTKLCAF \
+        -lTKMath \
+        -lTKMesh \
+        -lTKOffset \
+        -lTKPrim \
+        -lTKShHealing \
+        -lTKTopAlgo \
+        -lTKXSBase \
+        -lTKernel \
+} else {
+    # OCCT 7.9+ library names (vcpkg, manual install)
+    LIBS += \
+        -lTKBO \
+        -lTKBRep \
+        -lTKBool \
+        -lTKCDF \
+        -lTKDE \
+        -lTKDESTEP \
+        -lTKXCAF \
+        -lTKFillet \
+        -lTKG2d \
+        -lTKG3d \
+        -lTKGeomAlgo \
+        -lTKGeomBase \
+        -lTKLCAF \
+        -lTKMath \
+        -lTKMesh \
+        -lTKOffset \
+        -lTKPrim \
+        -lTKShHealing \
+        -lTKTopAlgo \
+        -lTKXSBase \
+        -lTKernel \
+}

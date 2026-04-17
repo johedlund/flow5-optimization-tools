@@ -254,29 +254,57 @@ RESOURCES += \
 LIBS += -L../fl5-lib -lfl5-lib
 
 #----- OCC -----
-# Note: OCCT 7.9 renamed some libraries (TKSTEP->TKDESTEP, TKXDESTEP->TKXCAF)
-LIBS += \
-    -lTKBRep \
-    -lTKBO \
-    -lTKG3d \
-    -lTKGeomAlgo \
-    -lTKGeomBase \
-    -lTKLCAF \
-    -lTKMath \
-    -lTKMesh \
-    -lTKOffset \
-    -lTKPrim \
-    -lTKDE \
-    -lTKDESTEP \
-    -lTKXCAF \
-    -lTKShHealing \
-    -lTKTopAlgo \
-    -lTKXSBase \
-    -lTKernel \
-    -lTKBool \
-    -lTKG2d \
-    -lTKCDF \
-    -lTKFillet \
+# OCCT 7.9 renamed some libraries (TKSTEP->TKDESTEP, TKXDESTEP->TKXCAF, added TKDE)
+# OCCT 7.6 (Ubuntu/Debian packages) uses the old names
+OCCT76 {
+    LIBS += \
+        -lTKBRep \
+        -lTKBO \
+        -lTKG3d \
+        -lTKGeomAlgo \
+        -lTKGeomBase \
+        -lTKLCAF \
+        -lTKMath \
+        -lTKMesh \
+        -lTKOffset \
+        -lTKPrim \
+        -lTKSTEP \
+        -lTKSTEP209 \
+        -lTKSTEPAttr \
+        -lTKSTEPBase \
+        -lTKXDESTEP \
+        -lTKShHealing \
+        -lTKTopAlgo \
+        -lTKXSBase \
+        -lTKernel \
+        -lTKBool \
+        -lTKG2d \
+        -lTKCDF \
+        -lTKFillet \
+} else {
+    LIBS += \
+        -lTKBRep \
+        -lTKBO \
+        -lTKG3d \
+        -lTKGeomAlgo \
+        -lTKGeomBase \
+        -lTKLCAF \
+        -lTKMath \
+        -lTKMesh \
+        -lTKOffset \
+        -lTKPrim \
+        -lTKDE \
+        -lTKDESTEP \
+        -lTKXCAF \
+        -lTKShHealing \
+        -lTKTopAlgo \
+        -lTKXSBase \
+        -lTKernel \
+        -lTKBool \
+        -lTKG2d \
+        -lTKCDF \
+        -lTKFillet \
+}
 
 DISTFILES += \
     ../meta/doc/images/flow5.png \
