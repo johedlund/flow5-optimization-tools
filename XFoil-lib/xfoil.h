@@ -39,6 +39,7 @@ See http://raphael.mit.edu/xfoil for more information.
 */
 
 
+#include <atomic>
 #include <string>
 #include <complex>
 
@@ -288,9 +289,9 @@ class XFOILLIBSHARED_EXPORT XFoil
 
 
     public:
-        static double vaccel;
-        static bool s_bCancel;
-        static bool s_bFullReport;
+        static std::atomic<double> vaccel;
+        static std::atomic<bool> s_bCancel;
+        static std::atomic<bool> s_bFullReport;
 
         std::string m_Report;
 

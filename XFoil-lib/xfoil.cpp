@@ -21,6 +21,7 @@
 *****************************************************************************/
 
 #
+#include <cmath>
 #include <cstring>
 
 #include "xfoil.h"
@@ -28,9 +29,9 @@
 #define PI 3.141592654
 #define EPSILON 1.e-6
 
-bool XFoil::s_bCancel = false;
-bool XFoil::s_bFullReport = false;
-double XFoil::vaccel = 0.01;
+std::atomic<bool> XFoil::s_bCancel{false};
+std::atomic<bool> XFoil::s_bFullReport{false};
+std::atomic<double> XFoil::vaccel{0.01};
 
 XFoil::XFoil()
 {
@@ -1633,6 +1634,7 @@ bool XFoil::blsolve()
 {
     int iv(0), kv(0), ivp(0), k(0), l(0), ivte1(0), ivz(0);
     double pivot(0), vtmp(0), vtmp1(0), vtmp2(0), vtmp3(0);
+    const double vacc = vaccel;
 
     ivte1 = isys[iblte[1]][1];
     //
@@ -1741,21 +1743,21 @@ bool XFoil::blsolve()
                     vtmp2 = vm[2][iv][kv];
                     vtmp3 = vm[3][iv][kv];
 
-                    if(fabs(vtmp1)>vaccel)
+                    if(fabs(vtmp1)>vacc)
                     {
                         for(l=ivp;l<= nsys;l++) vm[1][l][kv] -= vtmp1*vm[3][l][iv];
                         vdel[1][1][kv] -= vtmp1*vdel[3][1][iv];
                         vdel[1][2][kv] -= vtmp1*vdel[3][2][iv];
                     }
 
-                    if(fabs(vtmp2)>vaccel)
+                    if(fabs(vtmp2)>vacc)
                     {
                         for (l=ivp;l<=nsys;l++) vm[2][l][kv] -= vtmp2*vm[3][l][iv];
                         vdel[2][1][kv] -= vtmp2*vdel[3][1][iv];
                         vdel[2][2][kv] -= vtmp2*vdel[3][2][iv];
                     }
 
-                    if(fabs(vtmp3)>vaccel)
+                    if(fabs(vtmp3)>vacc)
                     {
                         for(l=ivp;l<=nsys;l++) vm[3][l][kv] -= vtmp3*vm[3][l][iv];
                         vdel[3][1][kv] -= vtmp3*vdel[3][1][iv];
@@ -9817,19 +9819,16 @@ bool XFoil::ViscousIter()
 //    writeString(str);
 
 
-/*    std::size_t pos = str.find("QN");
-
-    if (pos!=std::string::npos)
-    {
-        // no error
-    }
-    else
+    //    ------ abort on non-finite residuals (blsolve produced NaN/Inf)
+    //    Without this, pathological geometry runs the full s_IterLim (100)
+    //    iterations on garbage BL state per PSO particle per alpha.
+    if(!std::isfinite(rmsbl) || !std::isfinite(rmxbl))
     {
         lvconv = false;
-        str = "--------UNCONVERGED----------\n\n";
+        str = "--------UNCONVERGED (non-finite residual)----------\n\n";
         writeString(str, true);
         return false;
-    }*/
+    }
 
     if(rmsbl < eps1)
     {
