@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=\"$CLAUDE_FILE_PATH\"; if [ -n \"$file\" ] && echo \"$file\" | grep -qE '\\.(cpp|h|pri|pro)$'; then cd /home/johe2/optiflow5 && make -j4 -q 2>/dev/null; if [ $? -ne 0 ]; then echo '⚠️ Source changed — build may be needed'; fi; fi",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=\"$CLAUDE_FILE_PATH\"; if [ -n \"$file\" ] && echo \"$file\" | grep -qE '/(moc|objects|rcc)/|/Makefile$|/Makefile\\.(Debug|Release)$'; then echo 'BLOCKED: This is a qmake-generated file. Edit the .pro/.pri source files instead.' >&2; exit 2; fi"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo -e '\\a'"
+          }
+        ]
+      }
+    ]
+  }
+}
