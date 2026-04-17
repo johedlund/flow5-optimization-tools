@@ -12,7 +12,7 @@ XFoil-lib/*.pro.user*
 # Local build artifacts
 /.qmake.stash
 /Makefile
-API_examples/foiloptimize/build/
+API_examples/*/build/
 XFoil-lib/.qmake.stash
 XFoil-lib/Makefile
 XFoil-lib/objects/
@@ -32,4 +32,8 @@ leading_edge_errors.png
 leading_edge_error_again.png
 leading_edge_error_again2.png
 Issue_images/*.png
+
+# Tooling logs & local settings
+aqtinstall.log
+.claude/settings.local.json
 
