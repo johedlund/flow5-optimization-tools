@@ -156,7 +156,6 @@ void XFoilAnalysisDlg::initializeAnalysis(Foil *pFoil, Polar* pPolar, QVector<An
 
 void XFoilAnalysisDlg::onCancelClose()
 {
-    XFoil::s_bCancel= true;
     XFoilTask::setCancelled(true);
     if(m_pXFoilTask) m_pXFoilTask->setAnalysisStatus(xfl::CANCELLED);
     else

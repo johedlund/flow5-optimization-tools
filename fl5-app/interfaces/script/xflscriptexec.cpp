@@ -945,7 +945,7 @@ void XflScriptExec::runFoilAnalyses()
  */
 void XflScriptExec::cleanUpFoilAnalyses()
 {
-    XFoil::s_bCancel = false;
+    XFoilTask::setCancelled(false);
 
     for(int ia=m_FoilExecList.count()-1; ia>=0; ia--)
     {

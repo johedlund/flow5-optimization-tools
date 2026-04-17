@@ -154,8 +154,8 @@ bool XFoil::initialize()
     memset(qinv_a, 0, sizeof(qinv_a));
     memset(qinvu,  0, sizeof(qinvu));
     memset(qvis,   0, sizeof(qvis));
-    memset(s,      0, sizeof(x));
-    memset(sb,     0, sizeof(xb));
+    memset(s,      0, sizeof(s));
+    memset(sb,     0, sizeof(sb));
     memset(sig,    0, sizeof(sig));
     memset(snew,   0, sizeof(snew));
     memset(tau,    0, sizeof(tau));
@@ -9751,20 +9751,11 @@ bool XFoil::viscal()
 
 bool XFoil::ViscalEnd()
 {
-    /*
-    if(!){
-        return false;
-    }
-    if(!cpcalc(n+nw,qvis,qinf,minf,cpv)){
-        return false;
-    }
-*/
-    cpcalc(n+nw,qinv,qinf,minf,cpi);
-    cpcalc(n+nw,qvis,qinf,minf,cpv);
+    if(!cpcalc(n+nw,qinv,qinf,minf,cpi)) return false;
+    if(!cpcalc(n+nw,qvis,qinf,minf,cpv)) return false;
     if(lflap) mhinge();
 
     return true;
-
 }
 
 

@@ -138,7 +138,7 @@ bool XFoilTask::initialize(FoilAnalysis *pFoilAnalysis, bool bKeepOpps)
 
 bool XFoilTask::initialize(Foil &foil, Polar *pPolar, bool bKeepOpps)
 {
-    s_bCancel = false;
+    setCancelled(false);
 
     m_bKeepOpps = bKeepOpps;
 
@@ -147,8 +147,6 @@ bool XFoilTask::initialize(Foil &foil, Polar *pPolar, bool bKeepOpps)
     m_pPolar = pPolar;
 
     m_AnalysisStatus = xfl::PENDING;
-
-    XFoil::s_bCancel = false;
 
     std::vector<double> x(m_pFoil->nNodes()), y(m_pFoil->nNodes()), nx(m_pFoil->nNodes()), ny(m_pFoil->nNodes());
     for(int i=0; i<m_pFoil->nNodes(); i++)
