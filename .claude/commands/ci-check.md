@@ -29,11 +29,6 @@ cd /home/johe2/optiflow5 && OPENBLAS_NUM_THREADS=1 API_examples/foiloptimize/run
 cd /home/johe2/optiflow5 && git log origin/main..HEAD --oneline
 ```
 
-### 5. Beads Sync Status
-```bash
-cd /home/johe2/optiflow5 && bd stats
-```
-
 ## Output Summary
 
 ```
@@ -43,7 +38,6 @@ Build:      [PASS/FAIL]
 Lint:       [PASS/FAIL]
 Tests:      [PASS/FAIL]
 Unpushed:   X commits
-Beads:      X open issues
 
 Ready to push: [YES/NO]
 ```
@@ -52,7 +46,7 @@ Ready to push: [YES/NO]
 
 Suggest:
 ```bash
-git pull --rebase && bd sync && git push
+git pull --rebase && git push
 ```
 
 ## If Any Fail

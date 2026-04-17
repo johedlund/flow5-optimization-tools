@@ -120,16 +120,17 @@ Task tool with subagent_type=Bash     - For commits, status, push
 
 ## Issue Tracking
 
-Uses **bd (beads)** for issue tracking:
+Uses **GitHub Issues** on `johedlund/flow5-optimization-tools`:
 ```bash
-bd ready              # Find unblocked work
-bd show <id>          # Read issue description before starting work
-bd create "Title" --type task --priority 2
-bd close <id>         # Complete work
-bd sync               # Sync at session end (mandatory)
+gh issue list --state open                    # Open issues
+gh issue view <num>                           # Read issue before starting work
+gh issue create --title "..." --body "..."    # New issue
+gh issue close <num>                          # Complete work
 ```
 
-**Always run `bd show <id>` to read issue descriptions before starting work.**
+Label taxonomy: `priority-P0`..`P4` for priority; `bug`/`task`/`feature`/`epic`/`chore` for type; `foil-optim`/`test`/`build`/`docs`/`windows`/`perf` for subsystem.
+
+**Always run `gh issue view <num>` to read issue descriptions before starting work.**
 
 ## Global Object Registry
 

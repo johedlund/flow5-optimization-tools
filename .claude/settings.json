@@ -23,17 +23,6 @@
         ]
       }
     ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd /home/johe2/optiflow5 && if [ -d .beads ]; then bd sync 2>&1 | tail -3; fi",
-            "timeout": 15000
-          }
-        ]
-      }
-    ],
     "Notification": [
       {
         "matcher": "permission_prompt",

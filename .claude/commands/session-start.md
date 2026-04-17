@@ -21,9 +21,9 @@ cd /home/johe2/optiflow5 && git fetch origin && git status
 cd /home/johe2/optiflow5 && git stash list
 ```
 
-### 4. Show Available Issues
+### 4. Show Open Issues
 ```bash
-cd /home/johe2/optiflow5 && bd ready
+gh issue list --repo johedlund/flow5-optimization-tools --state open --limit 20
 ```
 
 ### 5. Quick Build Check
@@ -42,7 +42,7 @@ Git Identity:  Claude Agent <claude@agent.flow5>
 Branch:        [current branch]
 Status:        [clean/dirty/ahead/behind]
 Stashes:       [count]
-Ready Issues:  [list from bd ready]
+Open Issues:   [count from gh issue list]
 Build:         [OK/NEEDS REBUILD]
 
 Suggested next step: [based on status]
@@ -52,6 +52,6 @@ Suggested next step: [based on status]
 
 Based on the status, suggest ONE of:
 - "Run `/build` to rebuild after pulling changes"
-- "Run `bd show <id>` to review the top priority issue"
+- "Run `gh issue view <num>` to review an open issue"
 - "Continue work on uncommitted changes"
 - "Run `/ci-check` before pushing unpushed commits"
