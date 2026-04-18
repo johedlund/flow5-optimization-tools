@@ -45,7 +45,7 @@ jobs:
         host: 'windows'
         target: 'desktop'
         arch: 'win64_msvc2019_64'
-        cache: false  # Disable cache to ensure clean download (re-enable after fix confirmed)
+        cache: true
         # Note: Qt 6 base installation includes moc, uic, rcc, qmake by default
 
     - name: Debug Qt installation structure
@@ -415,25 +415,56 @@ jobs:
       shell: pwsh
       run: |
         $env:OPENBLAS_NUM_THREADS = "1"
-        $env:PATH = "${{ github.workspace }}\deploy;$env:PATH"
+        # Test exes link XFoil1.dll / fl5-lib1.dll (qmake VERSION suffix on Windows),
+        # so keep the original DLLs discoverable alongside the packaged deploy/.
+        $env:PATH = "${{ github.workspace }}\XFoil-lib;${{ github.workspace }}\fl5-lib;${{ github.workspace }}\deploy;$env:PATH"
 
-        # Build foiloptimize test
-        Write-Host "=== Building foiloptimize test ==="
-        cmake -S API_examples/foiloptimize -B API_examples/foiloptimize/build `
-          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
-          -DCMAKE_BUILD_TYPE=Release
-        cmake --build API_examples/foiloptimize/build --config Release
+        $commonArgs = @(
+          "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+          "-DCMAKE_BUILD_TYPE=Release"
+          "-DXFOIL_LIB_DIR=${{ github.workspace }}\XFoil-lib"
+          "-DFL5_LIB_DIR=${{ github.workspace }}\fl5-lib"
+          "-DOCCT_INCLUDE_DIR=$env:OCCT_DIR\include\opencascade"
+        )
 
-        # Run foiloptimize test
-        Write-Host "=== Running foiloptimize test ==="
-        $exe = Get-ChildItem API_examples/foiloptimize/build -Recurse -Filter "FoilOptimizeRun.exe" | Select-Object -First 1
-        if ($exe) {
+        $tests = @(
+          @{ dir = "foiloptimize";     exe = "FoilOptimizeRun.exe" }
+          @{ dir = "xfoilrun";         exe = "XFoilRun.exe" }
+          @{ dir = "geometry_test";    exe = "GeometryTest.exe" }
+          @{ dir = "analysis3d_test";  exe = "Analysis3dTest.exe" }
+          @{ dir = "constraint_test";  exe = "ConstraintTest.exe" }
+          @{ dir = "induced_aoa_test"; exe = "InducedAoATest.exe" }
+        )
+
+        $passed = @()
+        $failed = @()
+        foreach ($t in $tests) {
+          $name = $t.dir
+          $src  = "API_examples/$name"
+          $bld  = "API_examples/$name/build"
+          Write-Host ""
+          Write-Host "==================== $name ===================="
+
+          cmake -S $src -B $bld @commonArgs
+          if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] $name (configure)"; $failed += $name; continue }
+
+          cmake --build $bld --config Release
+          if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] $name (build)"; $failed += $name; continue }
+
+          $exe = Get-ChildItem $bld -Recurse -Filter $t.exe | Select-Object -First 1
+          if (-not $exe) { Write-Host "[FAIL] $name (exe not found: $($t.exe))"; $failed += $name; continue }
+
           & $exe.FullName
-          if ($LASTEXITCODE -ne 0) { Write-Error "foiloptimize test FAILED"; exit 1 }
-          Write-Host "[PASS] foiloptimize"
-        } else {
-          Write-Host "[SKIP] foiloptimize (exe not found)"
+          if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] $name (exit $LASTEXITCODE)"; $failed += $name; continue }
+          Write-Host "[PASS] $name"
+          $passed += $name
         }
+
+        Write-Host ""
+        Write-Host "==================== SUMMARY ===================="
+        Write-Host ("Passed {0}: {1}" -f $passed.Count, ($passed -join ', '))
+        Write-Host ("Failed {0}: {1}" -f $failed.Count, ($failed -join ', '))
+        if ($failed.Count -gt 0) { exit 1 }
 
     - name: Create ZIP
       shell: pwsh
