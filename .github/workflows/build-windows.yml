@@ -25,18 +25,6 @@ jobs:
       with:
         arch: amd64
         
-    # Restore cache at the start
-    - name: Restore vcpkg cache
-      id: cache-vcpkg-restore
-      uses: actions/cache/restore@v4
-      with:
-        path: |
-          vcpkg/installed
-          vcpkg/packages
-        key: vcpkg-opencascade-x64-windows-v1
-        restore-keys: |
-          vcpkg-opencascade-x64-windows-
-          
     # Install Qt using the official action
     - name: Install Qt
       uses: jurplel/install-qt-action@v3
@@ -214,41 +202,38 @@ jobs:
 
 
 
-    - name: Install vcpkg and OpenCASCADE
+    - name: Download OpenCASCADE prebuilt
+      # OCCT is published as a release asset by .github/workflows/build-occt-dep.yml.
+      # That producer workflow must be dispatched once per bump; this step then
+      # pulls the prebuilt tree (~1 min) instead of rebuilding from source (~90 min).
       shell: pwsh
       env:
-        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-binary-cache
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        OCCT_DEP_TAG: deps/occt-x64-windows
       run: |
-        # Create binary cache directory
-        New-Item -ItemType Directory -Force -Path "$env:VCPKG_DEFAULT_BINARY_CACHE"
-        
-        Write-Host "=== Installing vcpkg ==="
-        if (-not (Test-Path "vcpkg")) {
-            git clone https://github.com/microsoft/vcpkg.git
-        }
-        .\vcpkg\bootstrap-vcpkg.bat
+        $dest = "${{ github.workspace }}\vcpkg\installed\x64-windows"
+        New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
-        # Skip install if cache hit and installed dir exists with OCCT
-        if (Test-Path "vcpkg\installed\x64-windows\include\opencascade") {
-            Write-Host "=== OCCT already installed from cache ==="
-        } else {
-            Write-Host "=== Installing OpenCASCADE via vcpkg (this takes ~3 hours first time) ==="
-            .\vcpkg\vcpkg install opencascade:x64-windows
+        Write-Host "=== Downloading OCCT asset from release $env:OCCT_DEP_TAG ==="
+        gh release download $env:OCCT_DEP_TAG `
+            --repo ${{ github.repository }} `
+            --pattern 'occt-x64-windows.zip' `
+            --output occt-x64-windows.zip
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Could not download OCCT dep. Dispatch the 'Build OCCT dependency' workflow to publish it under tag $env:OCCT_DEP_TAG."
+            exit 1
         }
 
-        Write-Host "=== OCCT installed structure ==="
-        Get-ChildItem ".\vcpkg\installed\x64-windows" -Recurse -Depth 2 -Directory | ForEach-Object { Write-Host $_.FullName }
-        
-    - name: Save vcpkg cache
-      id: cache-vcpkg-save
-      if: always() && steps.cache-vcpkg-restore.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: |
-          vcpkg/installed
-          vcpkg/packages
-        key: ${{ steps.cache-vcpkg-restore.outputs.cache-primary-key }}
-        
+        Write-Host "=== Expanding OCCT into $dest ==="
+        Expand-Archive occt-x64-windows.zip -DestinationPath $dest -Force
+        Remove-Item occt-x64-windows.zip
+
+        if (-not (Test-Path "$dest\include\opencascade")) {
+            Write-Error "OCCT tree missing include/opencascade after extract; the release asset may be corrupt."
+            exit 1
+        }
+        Write-Host "=== OCCT ready ==="
+
     - name: Download OpenBLAS
       shell: pwsh
       run: |

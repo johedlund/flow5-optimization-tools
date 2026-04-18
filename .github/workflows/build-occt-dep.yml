@@ -1,0 +1,123 @@
+name: Build OCCT dependency
+
+# One-time (or version-bump) producer for the Flow5 Windows build.
+#
+# Builds OpenCASCADE via vcpkg and publishes the install tree as a zipped
+# asset on a GitHub Release. The main build-windows.yml workflow then
+# downloads this asset instead of spending ~90 min rebuilding OCCT every run.
+#
+# Dispatch this workflow when:
+#   - first-time project bootstrap,
+#   - OCCT version needs bumping,
+#   - the existing release asset was deleted or corrupted.
+#
+# Typical runtime: ~1.5 h (same as the old cache-miss path). One-off cost.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag for the OCCT dep asset'
+        default: 'deps/occt-x64-windows'
+        type: string
+      notes:
+        description: 'Optional extra text for release notes'
+        default: ''
+        type: string
+
+permissions:
+  contents: write   # create / update release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Clone and bootstrap vcpkg
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "vcpkg")) {
+              git clone https://github.com/microsoft/vcpkg.git
+          }
+          .\vcpkg\bootstrap-vcpkg.bat
+
+      - name: Build opencascade:x64-windows
+        shell: pwsh
+        run: |
+          Write-Host "=== Installing OpenCASCADE via vcpkg (one-off, ~1.5h) ==="
+          .\vcpkg\vcpkg install opencascade:x64-windows
+
+      - name: Strip debug tree (halves zip size)
+        shell: pwsh
+        run: |
+          $dbg = "vcpkg\installed\x64-windows\debug"
+          if (Test-Path $dbg) {
+              Write-Host "Removing $dbg"
+              Remove-Item $dbg -Recurse -Force
+          }
+          # Strip leftover PDBs from release bin/ too
+          Get-ChildItem "vcpkg\installed\x64-windows\bin" -Filter *.pdb -ErrorAction SilentlyContinue |
+            Remove-Item -Force
+
+      - name: Zip install tree
+        shell: pwsh
+        run: |
+          $src = "vcpkg\installed\x64-windows"
+          if (-not (Test-Path "$src\include\opencascade")) {
+              Write-Error "vcpkg install looks incomplete: no include/opencascade at $src"
+              exit 1
+          }
+
+          $size = (Get-ChildItem $src -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Host ("Uncompressed tree: {0:N1} MB" -f ($size / 1MB))
+
+          # Compress-Archive by default uses optimal; keep it simple.
+          Compress-Archive -Path "$src\*" -DestinationPath "occt-x64-windows.zip" -Force
+
+          $zipSize = (Get-Item "occt-x64-windows.zip").Length
+          Write-Host ("Zipped asset:      {0:N1} MB" -f ($zipSize / 1MB))
+
+          # GitHub Release assets are capped at 2 GiB each. Fail loudly if we're close.
+          if ($zipSize -gt 2100000000) {
+              Write-Error "ZIP is approaching / exceeding the 2 GiB per-asset limit. Consider further trimming."
+              exit 1
+          }
+
+      - name: Publish to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ inputs.tag }}"
+          $extra = "${{ inputs.notes }}"
+          Push-Location vcpkg
+          $vcpkgRev = (git rev-parse --short HEAD)
+          Pop-Location
+          $date = Get-Date -Format 'yyyy-MM-dd'
+
+          $lines = @(
+              "OpenCASCADE prebuilt for x64-windows (release only, debug tree stripped).",
+              "",
+              "- vcpkg revision: $vcpkgRev",
+              "- Built: $date on windows-latest",
+              "",
+              "Consumed by .github/workflows/build-windows.yml via 'gh release download'.",
+              "Re-dispatch .github/workflows/build-occt-dep.yml to refresh."
+          )
+          if ($extra) { $lines += ""; $lines += $extra }
+          $notes = $lines -join "`n"
+
+          # Idempotent: delete prior release (and tag) so we can recreate cleanly.
+          gh release delete $tag --yes --cleanup-tag 2>$null
+
+          gh release create $tag `
+              --title "OCCT x64-windows dep" `
+              --notes $notes `
+              occt-x64-windows.zip
