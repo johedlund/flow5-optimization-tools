@@ -19,6 +19,8 @@ target_link_libraries(Analysis3dTest PRIVATE
     Qt6::Core Qt6::Concurrent Qt6::Widgets
 )
 
+flow5_test_link_occt(Analysis3dTest)
+
 include(GNUInstallDirs)
 install(TARGETS Analysis3dTest
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

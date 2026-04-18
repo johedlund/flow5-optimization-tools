@@ -20,6 +20,8 @@ target_link_libraries(InducedAoATest PRIVATE
     Qt6::Core Qt6::Concurrent Qt6::Widgets
 )
 
+flow5_test_link_occt(InducedAoATest)
+
 include(GNUInstallDirs)
 install(TARGETS InducedAoATest
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

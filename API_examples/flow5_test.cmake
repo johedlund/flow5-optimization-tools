@@ -63,3 +63,35 @@ find_library(FLOW5_FL5_LIB
         /usr/lib64
     REQUIRED
 )
+
+# XFoil is translated from Fortran and stack-allocates very large local arrays.
+# Linux main-thread stack is 8 MB by default, Windows MSVC is only 1 MB, so tests
+# that run XFoil on the main thread (xfoilrun) overflow instantly. Match Linux.
+if(MSVC)
+    add_link_options("/STACK:8388608")
+endif()
+
+# Windows MSVC does NOT propagate transitive shared-library dependencies the way
+# ELF .so resolution does; fl5-lib.dll leaves OCCT kernel symbols (e.g.
+# Standard_OutOfMemory::ctor) as external imports, so any test exe that includes
+# fl5-lib/api headers which transitively pull OCCT must link TKernel.lib itself.
+# On Linux the dynamic linker resolves these via libfl5-lib.so's DT_NEEDED entry.
+function(flow5_test_link_occt target)
+    if(NOT WIN32)
+        return()
+    endif()
+    if(NOT OCCT_INCLUDE_DIR)
+        message(FATAL_ERROR
+            "flow5_test_link_occt(${target}) requires -DOCCT_INCLUDE_DIR=... "
+            "(usually <OCCT_DIR>/include/opencascade)")
+    endif()
+    # Derive the sibling lib dir from the include dir: .../include/opencascade → .../lib
+    get_filename_component(_occt_root "${OCCT_INCLUDE_DIR}" DIRECTORY)
+    get_filename_component(_occt_root "${_occt_root}" DIRECTORY)
+    find_library(FLOW5_OCCT_TKERNEL
+        NAMES TKernel
+        HINTS "${_occt_root}/lib"
+        REQUIRED
+    )
+    target_link_libraries(${target} PRIVATE ${FLOW5_OCCT_TKERNEL})
+endfunction()
